@@ -1,9 +1,9 @@
 FROM golang:1.6
 
-RUN go get -u github.com/tools/godep
+RUN go get github.com/kardianos/govendor
 
 ENV PROJECTPATH=/go/src/github.com/replicatedhq/harpoon
-ENV GOPATH $PROJECTPATH/_vendor:$GOPATH
+ENV PATH $PATH:$PROJECTPATH/go/bin
 
 ENV LOG_LEVEL DEBUG
 

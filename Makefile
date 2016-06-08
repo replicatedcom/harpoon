@@ -1,21 +1,21 @@
-.PHONY: all test clean deps build runr
+.PHONY: all test clean deps build shell vendor
 
 test:
-	@for pkg in $(shell cat ./test/packages.txt); do \
-		godep go test -covermode=count $${pkg}; \
-	done
+	# go get github.com/stretchr/testify/assert
+	govendor test +local
 
 clean:
-	rm -rf ./Godeps/_workspace/pkg
-	rm -rf ./_vendor
+	rm -rf ./go
 	rm -f ./bin/harpoon
 
-deps:
-	godep save ./...
+vendor:
+	go get -t ./...
+	govendor init
+	govendor add +external
 
 build:
 	mkdir -p ./bin
-	godep go build -o ./bin/harpoon .
+	govendor build -o ./bin/harpoon .
 
 shell:
 	docker run --rm -it -P --name harpoon \
