@@ -1,0 +1,69 @@
+{
+	"comment": "",
+	"ignore": "test",
+	"package": [
+		{
+			"checksumSHA1": "1LNMQR+ZHVc8ujJRbFOF3X2mINk=",
+			"path": "github.com/blang/semver",
+			"revision": "aea32c919a18e5ef4537bbd283ff29594b1b0165",
+			"revisionTime": "2015-12-05T09:49:59Z"
+		},
+		{
+			"checksumSHA1": "5rPfda8jFccr3A6heL+JAmi9K9g=",
+			"origin": "github.com/stretchr/testify/vendor/github.com/davecgh/go-spew/spew",
+			"path": "github.com/davecgh/go-spew/spew",
+			"revision": "8d64eb7173c7753d6419fd4a9caf057398611364",
+			"revisionTime": "2016-05-24T23:42:29Z"
+		},
+		{
+			"checksumSHA1": "rGvztOTUgbPOnrnoE9bKzJjroFI=",
+			"path": "github.com/namsral/flag",
+			"revision": "417f4c49833ffa4f4b59bc2d9ef77afa15d4f6e3",
+			"revisionTime": "2016-05-16T20:52:27Z"
+		},
+		{
+			"checksumSHA1": "BoXdUBWB8UnSlFlbnuTQaPqfCGk=",
+			"path": "github.com/op/go-logging",
+			"revision": "970db520ece77730c7e4724c61121037378659d9",
+			"revisionTime": "2016-03-15T20:05:05Z"
+		},
+		{
+			"checksumSHA1": "zKKp5SZ3d3ycKe4EKMNT0BqAWBw=",
+			"origin": "github.com/stretchr/testify/vendor/github.com/pmezard/go-difflib/difflib",
+			"path": "github.com/pmezard/go-difflib/difflib",
+			"revision": "8d64eb7173c7753d6419fd4a9caf057398611364",
+			"revisionTime": "2016-05-24T23:42:29Z"
+		},
+		{
+			"checksumSHA1": "Bn333k9lTndxU3D6n/G5c+GMcYY=",
+			"path": "github.com/stretchr/testify/assert",
+			"revision": "8d64eb7173c7753d6419fd4a9caf057398611364",
+			"revisionTime": "2016-05-24T23:42:29Z"
+		},
+		{
+			"checksumSHA1": "P9FJpir2c4G5PA46qEkaWy3l60U=",
+			"path": "github.com/stretchr/testify/require",
+			"revision": "8d64eb7173c7753d6419fd4a9caf057398611364",
+			"revisionTime": "2016-05-24T23:42:29Z"
+		},
+		{
+			"checksumSHA1": "gPvketsZyZOfoepmy6YAU5hyDWs=",
+			"path": "github.com/stretchr/testify/suite",
+			"revision": "8d64eb7173c7753d6419fd4a9caf057398611364",
+			"revisionTime": "2016-05-24T23:42:29Z"
+		},
+		{
+			"checksumSHA1": "CAFo3C9XTnrA5IRK1/fQsuB2wNE=",
+			"path": "github.com/urfave/cli",
+			"revision": "fa949b48f384d8916e1ca94880d665deaa1105c2",
+			"revisionTime": "2016-06-08T15:15:11Z"
+		},
+		{
+			"checksumSHA1": "N5fb5y92DFIP+wUhi1rSwPp9vyk=",
+			"path": "golang.org/x/crypto/ssh/terminal",
+			"revision": "77f4136a99ffb5ecdbdd0226bd5cb146cf56bc0e",
+			"revisionTime": "2016-06-07T10:36:12Z"
+		}
+	],
+	"rootPath": "github.com/replicatedhq/harpoon"
+}

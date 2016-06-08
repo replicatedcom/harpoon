@@ -65,7 +65,7 @@ func PullImage(dockerRemote *dockerreg.DockerRemote, proxy string, force bool, t
 
 	}
 
-	return errors.New("not implemented")
+	return errors.New("v2.PullImage done, but importing is not implemented")
 }
 
 // downloadBlob will download and write the layer to the workDir, in the docker format

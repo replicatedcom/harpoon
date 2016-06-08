@@ -37,6 +37,12 @@ docker build -t harpoon .
 make shell
 ```
 
+Once in the container:
+```shell
+make vendor
+make build
+```
+
 ### Testing
 
 Some tests require credentials to interact with Docker hub.  No data will be changed, but you should
