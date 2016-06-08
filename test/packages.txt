@@ -1,5 +1,3 @@
 github.com/replicatedhq/harpoon/log
 github.com/replicatedhq/harpoon/params
 github.com/replicatedhq/harpoon/dockerreg
-github.com/replicatedhq/harpoon/dockerreg/v2
-github.com/replicatedhq/harpoon/dockerreg/v1
