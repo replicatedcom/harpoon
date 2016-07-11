@@ -2,6 +2,7 @@ package dockerreg
 
 import (
 	"github.com/replicatedhq/harpoon/log"
+	"github.com/replicatedhq/harpoon/requests"
 
 	"github.com/docker/docker/pkg/archive"
 	docker "github.com/fsouza/go-dockerclient"
@@ -20,8 +21,12 @@ func init() {
 	}
 }
 
-func ImportFromRemote(remote *DockerRemote, proxy string, force bool, token string) error {
-	localStore, err := remote.PullImage(proxy, force, token)
+func ImportFromRemote(remote *DockerRemote, proxy string, force bool) error {
+	if err := requests.InitGlobalHttpClient(proxy); err != nil {
+		return err
+	}
+
+	localStore, err := remote.PullImage(force)
 	if localStore != nil {
 		defer localStore.delete()
 	}

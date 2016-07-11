@@ -41,6 +41,9 @@ manifest.json
 ```
 
 ### File: \<image id\>.json
+
+Config file, contains data from which `image id` is calculated.
+
 ```json
 {"architecture":"amd64","config":{...}..."os":"linux","rootfs":{"type":"layers","diff_ids":[...]}}
 ```
