@@ -1,6 +1,7 @@
 package dockerreg
 
 import (
+	"archive/tar"
 	"compress/gzip"
 	"encoding/json"
 	"errors"
@@ -11,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/replicatedhq/harpoon/log"
@@ -22,6 +24,84 @@ import (
 	"github.com/docker/docker/image/v1"
 	"github.com/docker/docker/layer"
 )
+
+func (dockerRemote *DockerRemote) StreamLayers() (io.ReadCloser, error) {
+	pipeReader, pipeWriter := io.Pipe()
+	go dockerRemote.writeLayers(pipeWriter)
+	return pipeReader, nil
+}
+
+func (dockerRemote *DockerRemote) writeLayers(pipeWriter *io.PipeWriter) {
+	tarWriter := tar.NewWriter(pipeWriter)
+
+	var writeError error
+	defer func() {
+		tarWriter.Close()
+		pipeWriter.CloseWithError(writeError)
+	}()
+
+	supported, writeError := isSupportedProtocol(dockerRemote)
+	if writeError != nil {
+		return
+	}
+	if !supported {
+		writeError = errors.New("Docker registry v2 protocol is not supported by remote")
+		return
+	}
+
+	dockerRemote.JWTToken = ""
+	rawManifest, writeError := dockerRemote.getRawManifest()
+	if writeError != nil {
+		return
+	}
+
+	tarHeader := &tar.Header{
+		Name: "_manifest.json",
+		// Mode: 0655,
+		Size: int64(len(rawManifest)),
+	}
+	if writeError = tarWriter.WriteHeader(tarHeader); writeError != nil {
+		log.Error(writeError)
+		return
+	}
+
+	if _, writeError = tarWriter.Write(rawManifest); writeError != nil {
+		log.Error(writeError)
+		return
+	}
+
+	var manifest schema1.SignedManifest
+	if writeError = manifest.UnmarshalJSON(rawManifest); writeError != nil {
+		log.Error(writeError)
+		return
+	}
+
+	for _, layer := range manifest.FSLayers {
+		var blobStream io.ReadCloser
+		var expectedLenght int64
+
+		blobStream, expectedLenght, writeError = dockerRemote.getBlobStream(layer.BlobSum)
+		if writeError != nil {
+			return
+		}
+		defer blobStream.Close() // ok to keep open until func terminates
+
+		tarHeader := &tar.Header{
+			Name: layer.BlobSum.String(),
+			Size: expectedLenght,
+		}
+		if writeError = tarWriter.WriteHeader(tarHeader); writeError != nil {
+			log.Error(writeError)
+			return
+		}
+
+		_, writeError = io.Copy(tarWriter, blobStream)
+		if writeError != nil {
+			log.Error(writeError)
+			return
+		}
+	}
+}
 
 // PullImage will pull image from v2 with v1 (todo) fallback, and will
 // ignore the cache if `force` is `true`.
@@ -45,7 +125,7 @@ func (dockerRemote *DockerRemote) PullImage(force bool) (*v1Store, error) {
 	// 401 when trying to pull.
 	dockerRemote.JWTToken = ""
 
-	verifiedManifest, err := getManifest(dockerRemote)
+	verifiedManifest, err := dockerRemote.getManifest()
 	if err != nil {
 		return nil, err
 	}
@@ -237,8 +317,59 @@ func downloadBlob(dockerRemote *DockerRemote, blobsum digest.Digest, manifest *s
 	return layer.DiffID(diffID), nil
 }
 
+func (dockerRemote *DockerRemote) getBlobStream(blobsum digest.Digest) (io.ReadCloser, int64, error) {
+	uri := fmt.Sprintf("https://%s/v2/%s/%s/blobs/%s", dockerRemote.Hostname, dockerRemote.Namespace, dockerRemote.ImageName, blobsum.String())
+
+	fmt.Printf("Downloading blob from %q\n", uri)
+
+	client := requests.GlobalHttpClient()
+
+	req, err := client.NewRequest("GET", uri, nil)
+	if err != nil {
+		log.Error(err)
+		return nil, 0, err
+	}
+
+	resp, err := doRequest(req, client, dockerRemote, 0)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
+		err := fmt.Errorf("Unexpected status code for %s: %d", uri, resp.StatusCode)
+		log.Error(err)
+		return nil, 0, err
+	}
+
+	fmt.Printf("Responded with content-length: %q\n", resp.Header.Get("Content-Length"))
+	expectedSize, err := strconv.ParseInt(resp.Header.Get("Content-Length"), 10, 64)
+	if err != nil {
+		log.Error(err)
+		expectedSize = -1
+	}
+
+	return resp.Body, expectedSize, nil
+}
+
 // getManifest will return the remote manifest for the image.
-func getManifest(dockerRemote *DockerRemote) (*schema1.SignedManifest, error) {
+func (dockerRemote *DockerRemote) getManifest() (*schema1.SignedManifest, error) {
+	rawManifest, err := dockerRemote.getRawManifest()
+	if err != nil {
+		return nil, err
+	}
+
+	var manifest schema1.SignedManifest
+	if err := manifest.UnmarshalJSON(rawManifest); err != nil {
+		log.Error(err)
+		return nil, err
+	}
+
+	fmt.Printf("manifest = %#v\n", manifest)
+	return &manifest, nil
+}
+
+func (dockerRemote *DockerRemote) getRawManifest() ([]byte, error) {
 	uri := fmt.Sprintf("https://%s/v2/%s/%s/manifests/%s", dockerRemote.Hostname, dockerRemote.Namespace, dockerRemote.ImageName, dockerRemote.Tag)
 
 	client := requests.GlobalHttpClient()
@@ -268,19 +399,11 @@ func getManifest(dockerRemote *DockerRemote) (*schema1.SignedManifest, error) {
 
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return nil, err
-	}
-
-	fmt.Printf("body = %s\n", body)
-	var manifest schema1.SignedManifest
-	if err := manifest.UnmarshalJSON(body); err != nil {
 		log.Error(err)
 		return nil, err
 	}
 
-	fmt.Printf("manifest = %#v\n", manifest)
-
-	return &manifest, nil
+	return body, nil
 }
 
 // isSupportedProtocol will communicate with the remote server and validate that it supports

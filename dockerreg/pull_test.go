@@ -1,8 +1,13 @@
 package dockerreg
 
 import (
+	"archive/tar"
+	"io"
+	"io/ioutil"
 	"os"
 	"testing"
+
+	"github.com/replicatedhq/harpoon/log"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -37,18 +42,21 @@ func TestPullImagePrivate(t *testing.T) {
 	dockerRemote.Token = token
 	dockerRemote.Username = username
 	dockerRemote.Password = password
-
-	//  dockerRemote.PreferredProto = "v1"
-	//	store1, err := dockerRemote.PullImage(false)
-	//  if assert.NotNil(t, store1) {
-	//    require.NoError(t, store1.delete())
-	//  }
-	//	require.NoError(t, err)
-
 	dockerRemote.PreferredProto = "v2"
-	store2, err := dockerRemote.PullImage(false)
-	if assert.NotNil(t, store2) {
-		require.NoError(t, store2.delete())
+	readCloser, err := dockerRemote.StreamLayers()
+	require.NotNil(t, readCloser)
+	defer readCloser.Close()
+
+	tarReader := tar.NewReader(readCloser)
+	for {
+		hdr, err := tarReader.Next()
+		if err == io.EOF {
+			break
+		}
+		require.NoError(t, err)
+		log.Debugf("Extracting %d bytes for file %s", hdr.Size, hdr.Name)
+
+		_, err = io.CopyN(ioutil.Discard, tarReader, hdr.Size)
+		require.NoError(t, err)
 	}
-	require.NoError(t, err)
 }
