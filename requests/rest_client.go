@@ -39,7 +39,7 @@ func InitGlobalRestClients(proxyParam string) error {
 }
 
 func NewRestClient(ua, pemFilename, proxyAddress string) (*RestClient, error) {
-	httpClient, err := NewHttpClient(ua, pemFilename, proxyAddress)
+	httpClient, err := newHttpClient(ua, pemFilename, proxyAddress)
 	if err != nil {
 		return nil, err
 	}

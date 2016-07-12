@@ -18,6 +18,8 @@ type DockerRemote struct {
 	Tag       string
 	Ref       reference.Named
 
+	PreferredProto string
+
 	Username string
 	Password string
 	Token    string

@@ -5,7 +5,7 @@ import (
 )
 
 func TestNewRequest(t *testing.T) {
-	client, err := NewHttpClient("Replicated-Client/1_1", "", "")
+	client, err := newHttpClient("Replicated-Client/1_1", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}

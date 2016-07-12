@@ -24,6 +24,8 @@ shell:
 		-v /var/run/docker.sock:/var/run/docker.sock \
 		-v `pwd`:/go/src/github.com/replicatedhq/harpoon \
 		-v /tmp:/tmp \
-		-e DOCKERHUB_USERNAME=$(DOCKERHUB_USERNAME) \
-		-e DOCKERHUB_PASSWORD=$(DOCKERHUB_PASSWORD) \
+		-e PRIVATE_IMAGE=$(PRIVATE_IMAGE) \
+		-e REGISTRY_TOKEN=$(REGISTRY_TOKEN) \
+		-e REGISTRY_USERNAME=$(REGISTRY_USERNAME) \
+		-e REGISTRY_PASSWORD=$(REGISTRY_PASSWORD) \
 		harpoon

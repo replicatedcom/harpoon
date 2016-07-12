@@ -50,7 +50,7 @@ func handlerPull(c *cli.Context) error {
 	}
 
 	// TODO: Tell it to use force v1 if needed
-	if err := dockerreg.ImportFromRemote(dockerRemote, c.String("proxy"), c.Bool("no-cache"), c.String("token")); err != nil {
+	if err := dockerreg.ImportFromRemote(dockerRemote, c.String("proxy"), c.Bool("no-cache")); err != nil {
 		fmt.Println(err.Error())
 		return err
 	}

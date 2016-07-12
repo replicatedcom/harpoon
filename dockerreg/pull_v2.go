@@ -23,11 +23,15 @@ import (
 	"github.com/docker/docker/layer"
 )
 
-// PullImage will pull image from v2 with v1 (todo) fallback, using the proxy server at `proxy`, and will
+// PullImage will pull image from v2 with v1 (todo) fallback, and will
 // ignore the cache if `force` is `true`.
-func (dockerRemote *DockerRemote) PullImage(proxy string, force bool, token string) (*v1Store, error) {
+func (dockerRemote *DockerRemote) PullImage(force bool) (*v1Store, error) {
 	// Validate that the remote server supports the v2 protocol
-	// TODO: Fallback to v1
+
+	if dockerRemote.PreferredProto == "v1" {
+		return dockerRemote.PullImageV1(force)
+	}
+
 	supported, err := isSupportedProtocol(dockerRemote)
 	if err != nil {
 		return nil, err
@@ -173,13 +177,11 @@ func downloadBlob(dockerRemote *DockerRemote, blobsum digest.Digest, manifest *s
 
 	fmt.Printf("Downloading blob from %q\n", uri)
 
-	client, err := requests.NewHttpClient("Harpoon-Client/0_0", "", "")
-	if err != nil {
-		return layer.DiffID(""), err
-	}
+	client := requests.GlobalHttpClient()
 
 	req, err := client.NewRequest("GET", uri, nil)
 	if err != nil {
+		log.Error(err)
 		return layer.DiffID(""), err
 	}
 
@@ -239,13 +241,11 @@ func downloadBlob(dockerRemote *DockerRemote, blobsum digest.Digest, manifest *s
 func getManifest(dockerRemote *DockerRemote) (*schema1.SignedManifest, error) {
 	uri := fmt.Sprintf("https://%s/v2/%s/%s/manifests/%s", dockerRemote.Hostname, dockerRemote.Namespace, dockerRemote.ImageName, dockerRemote.Tag)
 
-	client, err := requests.NewHttpClient("Harpoon-Client/0_0", "", "") // TODO: This leacks sockets
-	if err != nil {
-		return nil, err
-	}
+	client := requests.GlobalHttpClient()
 
 	req, err := client.NewRequest("GET", uri, nil)
 	if err != nil {
+		log.Error(err)
 		return nil, err
 	}
 
@@ -286,24 +286,30 @@ func getManifest(dockerRemote *DockerRemote) (*schema1.SignedManifest, error) {
 // isSupportedProtocol will communicate with the remote server and validate that it supports
 // the v2 protocol
 func isSupportedProtocol(dockerRemote *DockerRemote) (bool, error) {
-	uri := fmt.Sprintf("https://%s/v2/", dockerRemote.Hostname)
-
-	client, err := requests.NewHttpClient("Harpoon-Client/0_0", "", "")
-	if err != nil {
-		return false, err
+	uris := []string{
+		fmt.Sprintf("https://%s/%s/", dockerRemote.Hostname, dockerRemote.PreferredProto),
+		fmt.Sprintf("https://%s/%s/_ping", dockerRemote.Hostname, dockerRemote.PreferredProto),
 	}
 
-	req, err := client.NewRequest("GET", uri, nil)
-	if err != nil {
-		return false, err
-	}
+	for _, uri := range uris {
+		client := requests.GlobalHttpClient()
 
-	resp, err := doRequest(req, client, dockerRemote, 0)
-	if err != nil {
-		return false, err
-	}
+		req, err := client.NewRequest("GET", uri, nil)
+		if err != nil {
+			log.Infof("Error pinging URL %q: %v", uri, err)
+			continue
+		}
 
-	return resp.StatusCode == http.StatusOK, nil
+		resp, err := doRequest(req, client, dockerRemote, 0)
+		if err != nil {
+			continue
+		}
+
+		if resp.StatusCode == http.StatusOK {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // getJWTToken will return a new JWT token from the resources in the authenticateHeader string
@@ -339,22 +345,34 @@ func getJWTToken(dockerRemote *DockerRemote, authenticateHeader string) error {
 	uri := fmt.Sprintf("%s?%s", realm, v.Encode())
 
 	fmt.Printf("auth uri = %s\n", uri)
-	client, err := requests.NewHttpClient("Harpoon-Client/0_0", "", "")
+	client := requests.GlobalHttpClient()
+
+	req, err := client.NewRequest("GET", uri, nil)
 	if err != nil {
+		log.Error(err)
 		return err
 	}
 
-	resp, err := client.Get(uri)
+	if dockerRemote.Username != "" && dockerRemote.Password != "" {
+		req.SetBasicAuth(dockerRemote.Username, dockerRemote.Password)
+	} else if dockerRemote.Token != "" {
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", dockerRemote.Token))
+	}
+
+	resp, err := client.Do(req)
 	if err != nil {
+		log.Error(err)
 		return err
 	}
+	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected response: %d", resp.StatusCode)
+		err := fmt.Errorf("unexpected response: %d", resp.StatusCode)
+		log.Error(err)
+		return err
 	}
 
 	body, err := ioutil.ReadAll(resp.Body)
-	defer resp.Body.Close()
 	if err != nil {
 		return err
 	}
@@ -387,6 +405,7 @@ func doRequest(req *http.Request, client *requests.HttpClient, dockerRemote *Doc
 		return nil, err
 	}
 
+	// Search for pullV2Tag in docker, look in pull_v1 and pull_v2
 	if resp.StatusCode == http.StatusUnauthorized {
 		// We need a token and try again...
 		if err := getJWTToken(dockerRemote, resp.Header.Get("Www-Authenticate")); err != nil {

@@ -8,8 +8,7 @@ import (
 )
 
 var (
-	globalHttpClient        *HttpClient
-	globalHttpClientProxied *HttpClient
+	globalHttpClient *HttpClient
 )
 
 type HttpClient struct {
@@ -17,25 +16,18 @@ type HttpClient struct {
 	Transport Transport
 }
 
-func InitGlobalHttpClients(proxyParam string) error {
+func InitGlobalHttpClient(proxyParam string) error {
 	var err error
 
-	globalHttpClient, err = NewHttpClient("", "", "")
+	globalHttpClient, err = newHttpClient("Harpoon-Client/0_0", "", proxyParam)
 	if err != nil {
 		return err
-	}
-
-	if proxyParam != "" {
-		globalHttpClientProxied, err = NewHttpClient("", "", proxyParam)
-		if err != nil {
-			return err
-		}
 	}
 
 	return nil
 }
 
-func NewHttpClient(ua, pemFilename, proxyAddress string) (*HttpClient, error) {
+func newHttpClient(ua, pemFilename, proxyAddress string) (*HttpClient, error) {
 	c := &HttpClient{
 		Header: make(http.Header),
 	}
@@ -70,12 +62,8 @@ func NewHttpClient(ua, pemFilename, proxyAddress string) (*HttpClient, error) {
 	return c, nil
 }
 
-func GlobalHttpClient(useProxy bool) *HttpClient {
-	if globalHttpClientProxied == nil || !useProxy {
-		return globalHttpClient
-	}
-
-	return globalHttpClientProxied
+func GlobalHttpClient() *HttpClient {
+	return globalHttpClient
 }
 
 func (c *HttpClient) Get(url string) (*http.Response, error) {
