@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/replicatedhq/harpoon/dockerreg"
+	"github.com/replicatedcom/harpoon/dockerreg"
 
 	"github.com/urfave/cli"
 )

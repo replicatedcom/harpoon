@@ -22,7 +22,7 @@ build:
 shell:
 	docker run --rm -it -P --name harpoon \
 		-v /var/run/docker.sock:/var/run/docker.sock \
-		-v `pwd`:/go/src/github.com/replicatedhq/harpoon \
+		-v `pwd`:/go/src/github.com/replicatedcom/harpoon \
 		-v /tmp:/tmp \
 		-e PRIVATE_IMAGE=$(PRIVATE_IMAGE) \
 		-e REGISTRY_TOKEN=$(REGISTRY_TOKEN) \

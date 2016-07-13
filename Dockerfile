@@ -2,7 +2,7 @@ FROM golang:1.6
 
 RUN go get github.com/kardianos/govendor
 
-ENV PROJECTPATH=/go/src/github.com/replicatedhq/harpoon
+ENV PROJECTPATH=/go/src/github.com/replicatedcom/harpoon
 ENV PATH $PATH:$PROJECTPATH/go/bin
 
 ENV LOG_LEVEL DEBUG

@@ -1,8 +1,8 @@
 package dockerreg
 
 import (
-	"github.com/replicatedhq/harpoon/log"
-	"github.com/replicatedhq/harpoon/requests"
+	"github.com/replicatedcom/harpoon/log"
+	"github.com/replicatedcom/harpoon/requests"
 
 	"github.com/docker/docker/pkg/archive"
 	docker "github.com/fsouza/go-dockerclient"

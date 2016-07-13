@@ -7,7 +7,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/replicatedhq/harpoon/log"
+	"github.com/replicatedcom/harpoon/log"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
