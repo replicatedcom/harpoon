@@ -15,8 +15,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/replicatedhq/harpoon/log"
-	"github.com/replicatedhq/harpoon/requests"
+	"github.com/replicatedcom/harpoon/log"
+	"github.com/replicatedcom/harpoon/requests"
 
 	"github.com/docker/distribution/digest"
 	"github.com/docker/distribution/manifest/schema1"

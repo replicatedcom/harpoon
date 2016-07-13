@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/replicatedhq/harpoon/log"
+	"github.com/replicatedcom/harpoon/log"
 
 	"github.com/docker/docker/reference"
 )

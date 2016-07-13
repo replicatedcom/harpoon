@@ -8,7 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/replicatedhq/harpoon/log"
+	"github.com/replicatedcom/harpoon/log"
 
 	"github.com/docker/distribution/digest"
 
