@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/replicatedcom/harpoon/log"
+	"github.com/replicatedcom/harpoon/requests"
 
 	"github.com/docker/docker/reference"
 )
@@ -87,6 +88,10 @@ func ParseDockerURI(imageURI string) (*DockerRemote, error) {
 	dockerRemote.Ref = named
 
 	return &dockerRemote, nil
+}
+
+func (remote *DockerRemote) InitClient(proxy string) error {
+	return requests.InitGlobalHttpClient(proxy)
 }
 
 func (remote *DockerRemote) GetDisplayName() string {
