@@ -2,7 +2,6 @@ package dockerreg
 
 import (
 	"github.com/replicatedcom/harpoon/log"
-	"github.com/replicatedcom/harpoon/requests"
 
 	"github.com/docker/docker/pkg/archive"
 	docker "github.com/fsouza/go-dockerclient"
@@ -22,7 +21,7 @@ func init() {
 }
 
 func ImportFromRemote(remote *DockerRemote, proxy string, force bool) error {
-	if err := requests.InitGlobalHttpClient(proxy); err != nil {
+	if err := remote.InitClient(proxy); err != nil {
 		return err
 	}
 
