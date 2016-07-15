@@ -608,7 +608,7 @@ func downloadBlobFromTar(tarReader *tar.Reader, blobsum digest.Digest, layerDir 
 	log.Debugf("Expecting %s layer (%d bytes)", blobsum, hdr.Size)
 
 	if hdr.Name != blobsum.String() {
-		err := fmt.Errorf("Expected layer %q, but got layer %q",  blobsum, hdr.Name)
+		err := fmt.Errorf("Expected layer %q, but got layer %q", blobsum, hdr.Name)
 		log.Error(err)
 		return layer.DiffID(""), err
 	}
@@ -663,7 +663,7 @@ func skipLayerInTar(tarReader *tar.Reader, blobsum digest.Digest) error {
 	}
 
 	if hdr.Name != blobsum.String() {
-		err := fmt.Errorf("Expected layer %q, but got layer %q",  blobsum, hdr.Name)
+		err := fmt.Errorf("Expected layer %q, but got layer %q", blobsum, hdr.Name)
 		log.Error(err)
 		return err
 	}
