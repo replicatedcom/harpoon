@@ -1,13 +1,8 @@
 package dockerreg
 
 import (
-	"archive/tar"
-	"io"
-	"io/ioutil"
 	"os"
 	"testing"
-
-	"github.com/replicatedcom/harpoon/log"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -47,16 +42,6 @@ func TestPullImagePrivate(t *testing.T) {
 	require.NotNil(t, readCloser)
 	defer readCloser.Close()
 
-	tarReader := tar.NewReader(readCloser)
-	for {
-		hdr, err := tarReader.Next()
-		if err == io.EOF {
-			break
-		}
-		require.NoError(t, err)
-		log.Debugf("Extracting %d bytes for file %s", hdr.Size, hdr.Name)
-
-		_, err = io.CopyN(ioutil.Discard, tarReader, hdr.Size)
-		require.NoError(t, err)
-	}
+	err = ImportFromStream(readCloser, image)
+	require.NoError(t, err)
 }

@@ -29,13 +29,8 @@ type manifestItem struct {
 	Parent   image.ID `json:",omitempty"`
 }
 
-func getV1Store(manifest *schema1.SignedManifest, dockerRemote *DockerRemote) (*v1Store, error) {
+func getV1Store(verifiedManifest *schema1.Manifest) (*v1Store, error) {
 	result := &v1Store{}
-
-	verifiedManifest, err := verifySchema1Manifest(manifest, dockerRemote.Ref)
-	if err != nil {
-		return nil, err
-	}
 
 	compat := &v1Compatibility{}
 	// first entry is the top layer
@@ -67,7 +62,7 @@ func (repo *v1Store) delete() error {
 	return nil
 }
 
-func (repo *v1Store) writeConfigFile(dockerRemote *DockerRemote, imageID image.ID, config []byte) error {
+func (repo *v1Store) writeConfigFile(imageID image.ID, config []byte) error {
 	filename := filepath.Join(repo.Workspace, fmt.Sprintf("%s.json", digest.Digest(imageID).Hex()))
 	if err := ioutil.WriteFile(filename, config, 0644); err != nil {
 		log.Error(err)
@@ -77,18 +72,18 @@ func (repo *v1Store) writeConfigFile(dockerRemote *DockerRemote, imageID image.I
 	return nil
 }
 
-func (repo *v1Store) writeRepositoriesFile(dockerRemote *DockerRemote, imageID image.ID) error {
+func (repo *v1Store) writeRepositoriesFile(ref reference.Named, imageID image.ID) error {
 	filename := filepath.Join(repo.Workspace, "repositories")
 
-	tagged, ok := dockerRemote.Ref.(reference.NamedTagged)
+	tagged, ok := ref.(reference.NamedTagged)
 	if !ok {
-		err := fmt.Errorf("Reference is not tagged: %T", dockerRemote.Ref)
+		err := fmt.Errorf("Reference is not tagged: %T", ref)
 		log.Error(err)
 		return err
 	}
 
 	repos := map[string]interface{}{
-		dockerRemote.Ref.Name(): map[string]string{
+		ref.Name(): map[string]string{
 			tagged.Tag(): digest.Digest(imageID).Hex(),
 		},
 	}
@@ -107,7 +102,7 @@ func (repo *v1Store) writeRepositoriesFile(dockerRemote *DockerRemote, imageID i
 	return nil
 }
 
-func (repo *v1Store) writeManifestFile(dockerRemote *DockerRemote, imageID image.ID, layerV1IDs []digest.Digest) error {
+func (repo *v1Store) writeManifestFile(ref reference.Named, imageID image.ID, layerV1IDs []digest.Digest) error {
 	filename := filepath.Join(repo.Workspace, "manifest.json")
 
 	layers := make([]string, 0)
@@ -117,7 +112,7 @@ func (repo *v1Store) writeManifestFile(dockerRemote *DockerRemote, imageID image
 
 	manifest := manifestItem{
 		Config:   digest.Digest(imageID).Hex() + ".json",
-		RepoTags: []string{dockerRemote.Ref.String()},
+		RepoTags: []string{ref.String()},
 		Layers:   layers,
 		// TODO: ParentID is probbaly empty, but when is it not empty?
 	}

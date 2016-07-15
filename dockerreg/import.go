@@ -20,12 +20,12 @@ func init() {
 	}
 }
 
-func ImportFromRemote(remote *DockerRemote, proxy string, force bool) error {
+func ImportFromRemote(remote *DockerRemote, proxy string) error {
 	if err := remote.InitClient(proxy); err != nil {
 		return err
 	}
 
-	localStore, err := remote.PullImage(force)
+	localStore, err := remote.PullImage()
 	if localStore != nil {
 		defer localStore.delete()
 	}
@@ -34,6 +34,10 @@ func ImportFromRemote(remote *DockerRemote, proxy string, force bool) error {
 		return err
 	}
 
+	return ImportFromLocal(localStore)
+}
+
+func ImportFromLocal(localStore *v1Store) error {
 	log.Debugf("Loading image from %s", localStore.Workspace)
 
 	archive, err := archive.TarWithOptions(localStore.Workspace, &archive.TarOptions{Compression: archive.Uncompressed})
