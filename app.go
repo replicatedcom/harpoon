@@ -29,7 +29,6 @@ func main() {
 			Action: handlerPull,
 			Flags: []cli.Flag{
 				cli.StringFlag{Name: "proxy"},
-				cli.BoolFlag{Name: "no-cache"},
 				cli.BoolFlag{Name: "no-load"},
 				cli.BoolFlag{Name: "force-v1"},
 				cli.StringFlag{Name: "token"},
@@ -50,7 +49,7 @@ func handlerPull(c *cli.Context) error {
 	}
 
 	// TODO: Tell it to use force v1 if needed
-	if err := dockerreg.ImportFromRemote(dockerRemote, c.String("proxy"), c.Bool("no-cache")); err != nil {
+	if err := dockerreg.ImportFromRemote(dockerRemote, c.String("proxy")); err != nil {
 		fmt.Println(err.Error())
 		return err
 	}
