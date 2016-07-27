@@ -21,6 +21,7 @@ build:
 
 shell:
 	docker run --rm -it -P --name harpoon \
+		--add-host registry.replicated.com:192.168.100.100 \
 		-v /var/run/docker.sock:/var/run/docker.sock \
 		-v `pwd`:/go/src/github.com/replicatedcom/harpoon \
 		-v /tmp:/tmp \
@@ -28,4 +29,5 @@ shell:
 		-e REGISTRY_TOKEN=$(REGISTRY_TOKEN) \
 		-e REGISTRY_USERNAME=$(REGISTRY_USERNAME) \
 		-e REGISTRY_PASSWORD=$(REGISTRY_PASSWORD) \
+		-e REGISTRY_HOSTNAME=$(REGISTRY_HOSTNAME) \
 		harpoon
