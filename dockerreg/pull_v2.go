@@ -27,6 +27,10 @@ import (
 	"github.com/docker/docker/reference"
 )
 
+var (
+	ErrUnauthorized = errors.New("Unauthorized")
+)
+
 func (dockerRemote *DockerRemote) StreamLayers() (io.ReadCloser, error) {
 	pipeReader, pipeWriter := io.Pipe()
 	go dockerRemote.writeLayers(pipeWriter)
@@ -401,7 +405,7 @@ func (dockerRemote *DockerRemote) PullImage() (*v1Store, error) {
 func downloadBlob(dockerRemote *DockerRemote, blobsum digest.Digest, layerDir string) (layer.DiffID, error) {
 	uri := fmt.Sprintf("https://%s/v2/%s/%s/blobs/%s", dockerRemote.Hostname, dockerRemote.Namespace, dockerRemote.ImageName, blobsum.String())
 
-	fmt.Printf("Downloading blob from %q\n", uri)
+	log.Debugf("Downloading blob from %q\n", uri)
 
 	client := requests.GlobalHttpClient()
 
@@ -466,7 +470,7 @@ func downloadBlob(dockerRemote *DockerRemote, blobsum digest.Digest, layerDir st
 func (dockerRemote *DockerRemote) getBlobStream(blobsum digest.Digest) (io.ReadCloser, int64, error) {
 	uri := fmt.Sprintf("https://%s/v2/%s/%s/blobs/%s", dockerRemote.Hostname, dockerRemote.Namespace, dockerRemote.ImageName, blobsum.String())
 
-	fmt.Printf("Downloading blob from %q\n", uri)
+	log.Debugf("Downloading blob from %q", uri)
 
 	client := requests.GlobalHttpClient()
 
@@ -488,7 +492,7 @@ func (dockerRemote *DockerRemote) getBlobStream(blobsum digest.Digest) (io.ReadC
 		return nil, 0, err
 	}
 
-	fmt.Printf("Responded with content-length: %q\n", resp.Header.Get("Content-Length"))
+	log.Debugf("Responded with content-length: %q", resp.Header.Get("Content-Length"))
 	expectedSize, err := strconv.ParseInt(resp.Header.Get("Content-Length"), 10, 64)
 	if err != nil {
 		log.Error(err)
@@ -511,14 +515,14 @@ func (dockerRemote *DockerRemote) getManifest() (*schema1.Manifest, error) {
 		return nil, err
 	}
 
-	fmt.Printf("manifest = %#v\n", manifest)
+	log.Debugf("manifest = %#v", manifest)
 
 	verifiedManifest, err := verifySchema1Manifest(&manifest, dockerRemote.Ref)
 	if err != nil {
 		return nil, err
 	}
 
-	fmt.Printf("verifiedManifest = %#v\n", verifiedManifest)
+	log.Debugf("verifiedManifest = %#v", verifiedManifest)
 
 	return verifiedManifest, nil
 }
@@ -549,7 +553,7 @@ func (dockerRemote *DockerRemote) getManifestBytes() ([]byte, error) {
 	}
 
 	contentType := resp.Header.Get("Content-Type")
-	fmt.Printf("Responded with content-type: %q\n", contentType)
+	log.Debugf("Responded with content-type: %q", contentType)
 
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
@@ -592,7 +596,7 @@ func getManifestFromTar(tarReader *tar.Reader, ref reference.Named) (*schema1.Ma
 		return nil, err
 	}
 
-	fmt.Printf("verifiedManifest = %#v\n", verifiedManifest)
+	log.Debugf("verifiedManifest = %#v", verifiedManifest)
 
 	return verifiedManifest, nil
 }
@@ -733,7 +737,7 @@ func getJWTToken(dockerRemote *DockerRemote, authenticateHeader string) error {
 	}
 	uri := fmt.Sprintf("%s?%s", realm, v.Encode())
 
-	fmt.Printf("auth uri = %s\n", uri)
+	log.Debugf("auth uri = %s", uri)
 	client := requests.GlobalHttpClient()
 
 	req, err := client.NewRequest("GET", uri, nil)
@@ -755,7 +759,10 @@ func getJWTToken(dockerRemote *DockerRemote, authenticateHeader string) error {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode == http.StatusUnauthorized {
+		log.Error(ErrUnauthorized)
+		return ErrUnauthorized
+	} else if resp.StatusCode != http.StatusOK {
 		err := fmt.Errorf("unexpected response: %d", resp.StatusCode)
 		log.Error(err)
 		return err
@@ -788,7 +795,10 @@ func doRequest(req *http.Request, client *requests.HttpClient, dockerRemote *Doc
 		return nil, err
 	}
 
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", dockerRemote.JWTToken))
+	if dockerRemote.JWTToken != "" {
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", dockerRemote.JWTToken))
+	}
+
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err

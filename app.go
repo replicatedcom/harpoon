@@ -1,10 +1,10 @@
 package main
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/replicatedcom/harpoon/dockerreg"
+	"github.com/replicatedcom/harpoon/log"
 
 	"github.com/urfave/cli"
 )
@@ -40,17 +40,17 @@ func main() {
 }
 
 func handlerPull(c *cli.Context) error {
-	fmt.Printf("Pulling image %q\n", c.Args()[0])
+	log.Debugf("Pulling image %q", c.Args()[0])
 
 	dockerRemote, err := dockerreg.ParseDockerURI(c.Args()[0])
 	if err != nil {
-		fmt.Println(err.Error())
+		log.Debugf("%v", err)
 		return err
 	}
 
 	// TODO: Tell it to use force v1 if needed
 	if err := dockerreg.ImportFromRemote(dockerRemote, c.String("proxy")); err != nil {
-		fmt.Println(err.Error())
+		log.Debugf("%v", err)
 		return err
 	}
 
