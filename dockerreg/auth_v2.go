@@ -2,7 +2,6 @@ package dockerreg
 
 import (
 	"fmt"
-	"io/ioutil"
 	"net/http"
 
 	"github.com/replicatedcom/harpoon/log"
