@@ -33,14 +33,12 @@ docker://quay.io/org/priv:abc
 
 ## Contributing
 ```shell
-docker build -t harpoon .
-make shell
+make docker shell
 ```
 
 Once in the container:
 ```shell
-make vendor
-make build
+make install build
 ```
 
 ### Testing

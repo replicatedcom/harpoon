@@ -9,7 +9,7 @@ import (
 	"github.com/replicatedcom/harpoon/log"
 	"github.com/replicatedcom/harpoon/requests"
 
-	"github.com/docker/docker/reference"
+	"github.com/docker/distribution/reference"
 )
 
 // DockerRemote represents a parsed docker:// image uri.
@@ -84,7 +84,7 @@ func ParseDockerURI(imageURI string) (*DockerRemote, error) {
 		dockerRemote.Tag = imageURIAndTag[1]
 	}
 
-	named, err := reference.ParseNamed(imageURI)
+	named, err := reference.ParseNormalizedNamed(imageURI)
 	if err != nil {
 		log.Error(err)
 		return nil, err

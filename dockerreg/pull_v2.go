@@ -19,12 +19,12 @@ import (
 	"github.com/replicatedcom/harpoon/log"
 	"github.com/replicatedcom/harpoon/requests"
 
-	"github.com/docker/distribution/digest"
 	"github.com/docker/distribution/manifest/schema1"
+	"github.com/docker/distribution/reference"
 	"github.com/docker/docker/image"
 	"github.com/docker/docker/image/v1"
 	"github.com/docker/docker/layer"
-	"github.com/docker/docker/reference"
+	digest "github.com/opencontainers/go-digest"
 )
 
 var (
@@ -125,7 +125,7 @@ func ImportFromStream(reader io.Reader, imageURI string) error {
 }
 
 func streamToTempStore(reader io.Reader, imageURI string) (*v1Store, error) {
-	ref, err := reference.ParseNamed(imageURI)
+	ref, err := reference.ParseNormalizedNamed(imageURI)
 	if err != nil {
 		log.Error(err)
 		return nil, err
@@ -427,7 +427,7 @@ func downloadBlob(dockerRemote *DockerRemote, blobsum digest.Digest, layerDir st
 		return layer.DiffID(""), err
 	}
 
-	gzipDigest := digest.Canonical.New()
+	gzipDigest := digest.Canonical.Digester()
 	responseReader := io.TeeReader(resp.Body, gzipDigest.Hash())
 
 	archive, err := gzip.NewReader(responseReader)
@@ -445,7 +445,7 @@ func downloadBlob(dockerRemote *DockerRemote, blobsum digest.Digest, layerDir st
 	}
 	defer writer.Close()
 
-	tarDigest := digest.Canonical.New()
+	tarDigest := digest.Canonical.Digester()
 	tarWriter := io.MultiWriter(writer, tarDigest.Hash())
 
 	_, err = io.Copy(tarWriter, archive)
@@ -617,7 +617,7 @@ func downloadBlobFromTar(tarReader *tar.Reader, blobsum digest.Digest, layerDir 
 		return layer.DiffID(""), err
 	}
 
-	gzipDigest := digest.Canonical.New()
+	gzipDigest := digest.Canonical.Digester()
 	responseReader := io.TeeReader(tarReader, gzipDigest.Hash())
 
 	archive, err := gzip.NewReader(responseReader)
@@ -635,7 +635,7 @@ func downloadBlobFromTar(tarReader *tar.Reader, blobsum digest.Digest, layerDir 
 	}
 	defer writer.Close()
 
-	tarDigest := digest.Canonical.New()
+	tarDigest := digest.Canonical.Digester()
 	tarWriter := io.MultiWriter(writer, tarDigest.Hash())
 
 	// TODO: Anyway to check we read the right number of bytes from the original tar?

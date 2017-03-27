@@ -10,11 +10,10 @@ import (
 
 	"github.com/replicatedcom/harpoon/log"
 
-	"github.com/docker/distribution/digest"
-
 	"github.com/docker/distribution/manifest/schema1"
+	"github.com/docker/distribution/reference"
 	"github.com/docker/docker/image"
-	"github.com/docker/docker/reference"
+	digest "github.com/opencontainers/go-digest"
 )
 
 type v1Store struct {
@@ -134,11 +133,7 @@ func (repo *v1Store) writeManifestFile(ref reference.Named, imageID image.ID, la
 // Copied from docker
 func verifySchema1Manifest(signedManifest *schema1.SignedManifest, ref reference.Named) (m *schema1.Manifest, err error) {
 	if digested, isCanonical := ref.(reference.Canonical); isCanonical {
-		verifier, err := digest.NewDigestVerifier(digested.Digest())
-		if err != nil {
-			log.Error(err)
-			return nil, err
-		}
+		verifier := digested.Digest().Verifier()
 		if _, err := verifier.Write(signedManifest.Canonical); err != nil {
 			log.Error(err)
 			return nil, err

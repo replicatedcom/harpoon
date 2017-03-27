@@ -1,3 +1,0 @@
-github.com/replicatedcom/harpoon/log
-github.com/replicatedcom/harpoon/params
-github.com/replicatedcom/harpoon/dockerreg
