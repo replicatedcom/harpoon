@@ -1,23 +1,20 @@
-.PHONY: all test clean deps build shell vendor
+.PHONY: all test clean install build docker shell
 
 test:
-	# go get github.com/stretchr/testify/assert
-	govendor test -v +local
+	go test --race `go list ./... | grep -v /vendor/`
 
 clean:
-	rm -rf ./go
 	rm -f ./bin/harpoon
 
-vendor:
-	# initial setup
-	# to add new repos, run "govendor fetch <url>"
-	go get -t ./...
-	govendor init
-	govendor add +external
+install:
+	govendor install +local +vendor,^program
 
 build:
 	mkdir -p ./bin
-	govendor build -o ./bin/harpoon .
+	go build -o ./bin/harpoon .
+
+docker:
+	docker build -t harpoon .
 
 shell:
 	docker run --rm -it -P --name harpoon \
