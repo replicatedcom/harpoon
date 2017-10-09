@@ -1,4 +1,4 @@
-package dockerreg
+package importer
 
 import (
 	"encoding/json"

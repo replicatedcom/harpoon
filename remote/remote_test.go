@@ -1,4 +1,4 @@
-package dockerreg
+package remote
 
 import (
 	"testing"

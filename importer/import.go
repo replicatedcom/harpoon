@@ -1,7 +1,8 @@
-package dockerreg
+package importer
 
 import (
 	"github.com/replicatedcom/harpoon/log"
+	"github.com/replicatedcom/harpoon/remote"
 
 	"github.com/docker/docker/pkg/archive"
 	docker "github.com/fsouza/go-dockerclient"
@@ -20,12 +21,10 @@ func init() {
 	}
 }
 
-func ImportFromRemote(remote *DockerRemote, proxy string) error {
-	if err := remote.InitClient(proxy); err != nil {
-		return err
-	}
+func ImportFromRemote(dockerRemote *remote.DockerRemote) error {
+	i := &Importer{Remote: dockerRemote}
 
-	localStore, err := remote.PullImage()
+	localStore, err := i.PullImage()
 	if localStore != nil {
 		defer localStore.delete()
 	}
@@ -34,10 +33,10 @@ func ImportFromRemote(remote *DockerRemote, proxy string) error {
 		return err
 	}
 
-	return ImportFromLocal(localStore)
+	return i.ImportFromLocal(localStore)
 }
 
-func ImportFromLocal(localStore *v1Store) error {
+func (i *Importer) ImportFromLocal(localStore *v1Store) error {
 	log.Debugf("Loading image from %s", localStore.Workspace)
 
 	archive, err := archive.TarWithOptions(localStore.Workspace, &archive.TarOptions{Compression: archive.Uncompressed})

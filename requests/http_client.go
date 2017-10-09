@@ -7,24 +7,13 @@ import (
 	"strings"
 )
 
-var (
-	globalHttpClient *HttpClient
-)
-
 type HttpClient struct {
 	Header    http.Header
 	Transport Transport
 }
 
-func InitGlobalHttpClient(proxyParam string) error {
-	var err error
-
-	globalHttpClient, err = newHttpClient("Harpoon-Client/0_0", "", proxyParam)
-	if err != nil {
-		return err
-	}
-
-	return nil
+func GetHttpClient(proxyParam string) (*HttpClient, error) {
+	return newHttpClient("Harpoon-Client/0_0", "", proxyParam)
 }
 
 func newHttpClient(ua, pemFilename, proxyAddress string) (*HttpClient, error) {
@@ -60,10 +49,6 @@ func newHttpClient(ua, pemFilename, proxyAddress string) (*HttpClient, error) {
 	c.Transport = t
 
 	return c, nil
-}
-
-func GlobalHttpClient() *HttpClient {
-	return globalHttpClient
 }
 
 func (c *HttpClient) Get(url string) (*http.Response, error) {

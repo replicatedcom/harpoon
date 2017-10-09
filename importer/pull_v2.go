@@ -1,4 +1,4 @@
-package dockerreg
+package importer
 
 import (
 	"archive/tar"
@@ -10,14 +10,12 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
 
 	"github.com/replicatedcom/harpoon/log"
-	"github.com/replicatedcom/harpoon/requests"
+	"github.com/replicatedcom/harpoon/remote"
 
 	"github.com/docker/distribution/manifest/schema1"
 	"github.com/docker/distribution/reference"
@@ -27,17 +25,22 @@ import (
 	digest "github.com/opencontainers/go-digest"
 )
 
-var (
-	ErrUnauthorized = errors.New("Unauthorized")
+const (
+	maxRetries       = 3
+	ManifestFileName = "_manifest.json"
 )
 
-func (dockerRemote *DockerRemote) StreamLayers() (io.ReadCloser, error) {
+type Importer struct {
+	Remote *remote.DockerRemote
+}
+
+func (i *Importer) StreamLayers() (io.ReadCloser, error) {
 	pipeReader, pipeWriter := io.Pipe()
-	go dockerRemote.writeLayers(pipeWriter)
+	go i.writeLayers(pipeWriter)
 	return pipeReader, nil
 }
 
-func (dockerRemote *DockerRemote) writeLayers(pipeWriter *io.PipeWriter) {
+func (i *Importer) writeLayers(pipeWriter *io.PipeWriter) {
 	tarWriter := tar.NewWriter(pipeWriter)
 
 	var writeError error
@@ -46,7 +49,7 @@ func (dockerRemote *DockerRemote) writeLayers(pipeWriter *io.PipeWriter) {
 		tarWriter.Close()
 	}()
 
-	supported, writeError := isSupportedProtocol(dockerRemote)
+	supported, writeError := i.isSupportedProtocol()
 	if writeError != nil {
 		return
 	}
@@ -55,14 +58,14 @@ func (dockerRemote *DockerRemote) writeLayers(pipeWriter *io.PipeWriter) {
 		return
 	}
 
-	dockerRemote.JWTToken = ""
-	rawManifest, writeError := dockerRemote.getManifestBytes()
+	i.Remote.JWTToken = ""
+	rawManifest, writeError := i.GetManifestBytes("v1")
 	if writeError != nil {
 		return
 	}
 
 	tarHeader := &tar.Header{
-		Name: ManifestFileNameV2,
+		Name: ManifestFileName,
 		// Mode: 0655,
 		Size: int64(len(rawManifest)),
 	}
@@ -83,13 +86,13 @@ func (dockerRemote *DockerRemote) writeLayers(pipeWriter *io.PipeWriter) {
 	}
 
 	// Send layers in reverse because import needs to read them in reverse order
-	for i := len(manifest.FSLayers) - 1; i >= 0; i-- {
-		layer := manifest.FSLayers[i]
+	for j := len(manifest.FSLayers) - 1; j >= 0; j-- {
+		layer := manifest.FSLayers[j]
 
 		var blobStream io.ReadCloser
 		var expectedLenght int64
 
-		blobStream, expectedLenght, writeError = dockerRemote.getBlobStream(layer.BlobSum)
+		blobStream, expectedLenght, writeError = i.getBlobStream(layer.BlobSum)
 		if writeError != nil {
 			return
 		}
@@ -113,7 +116,7 @@ func (dockerRemote *DockerRemote) writeLayers(pipeWriter *io.PipeWriter) {
 }
 
 // ImportFromStream will read manifest and layer data from a single tar stream
-func ImportFromStream(reader io.Reader, imageURI string) error {
+func (i *Importer) ImportFromStream(reader io.Reader, imageURI string) error {
 	tmpStore, err := streamToTempStore(reader, imageURI)
 	if tmpStore != nil {
 		defer tmpStore.delete()
@@ -121,7 +124,7 @@ func ImportFromStream(reader io.Reader, imageURI string) error {
 	if err != nil {
 		return err
 	}
-	return ImportFromLocal(tmpStore)
+	return i.ImportFromLocal(tmpStore)
 }
 
 func streamToTempStore(reader io.Reader, imageURI string) (*v1Store, error) {
@@ -255,14 +258,14 @@ func streamToTempStore(reader io.Reader, imageURI string) (*v1Store, error) {
 }
 
 // PullImage will pull image from v2 with v1 (todo) fallback
-func (dockerRemote *DockerRemote) PullImage() (*v1Store, error) {
+func (i *Importer) PullImage() (*v1Store, error) {
 	// Validate that the remote server supports the v2 protocol
 
-	if dockerRemote.PreferredProto == "v1" {
-		return dockerRemote.PullImageV1()
+	if i.Remote.PreferredProto == "v1" {
+		return i.PullImageV1()
 	}
 
-	supported, err := isSupportedProtocol(dockerRemote)
+	supported, err := i.isSupportedProtocol()
 	if err != nil {
 		return nil, err
 	}
@@ -273,9 +276,9 @@ func (dockerRemote *DockerRemote) PullImage() (*v1Store, error) {
 	// Ugh, this isn't the right design to use here.
 	// But the token will be set from checking the /v2/ endpoint without a scope, which will cause a
 	// 401 when trying to pull.
-	dockerRemote.JWTToken = ""
+	i.Remote.JWTToken = ""
 
-	verifiedManifest, err := dockerRemote.getManifest()
+	verifiedManifest, err := i.GetManifestV1()
 	if err != nil {
 		return nil, err
 	}
@@ -297,14 +300,14 @@ func (dockerRemote *DockerRemote) PullImage() (*v1Store, error) {
 	layerV1IDs := make([]digest.Digest, 0)
 
 	// Note that we check number of layers above so it's safe to run loop with i == 0
-	for i := len(verifiedManifest.FSLayers) - 1; i >= 0; i-- {
-		layer := verifiedManifest.FSLayers[i]
+	for j := len(verifiedManifest.FSLayers) - 1; j >= 0; j-- {
+		layer := verifiedManifest.FSLayers[j]
 
 		var throwAway struct {
 			ThrowAway bool `json:"throwaway,omitempty"`
 		}
 
-		v1ImageJson := []byte(verifiedManifest.History[i].V1Compatibility)
+		v1ImageJson := []byte(verifiedManifest.History[j].V1Compatibility)
 		if err := json.Unmarshal(v1ImageJson, &throwAway); err != nil {
 			return localStore, err
 		}
@@ -328,7 +331,7 @@ func (dockerRemote *DockerRemote) PullImage() (*v1Store, error) {
 		}
 
 		blobSum := layer.BlobSum
-		diffID, err := downloadBlob(dockerRemote, blobSum, layerTempDir)
+		diffID, err := i.downloadBlob(blobSum, layerTempDir)
 		if err != nil {
 			return localStore, err
 		}
@@ -340,7 +343,7 @@ func (dockerRemote *DockerRemote) PullImage() (*v1Store, error) {
 
 		rootFS.Append(diffID) // rootFS must contain this layer ID to produce correct chain ID
 		v1Img := image.V1Image{}
-		if i == 0 {
+		if j == 0 {
 			if err := json.Unmarshal(v1ImageJson, &v1Img); err != nil {
 				log.Error(err)
 				return localStore, err
@@ -390,11 +393,11 @@ func (dockerRemote *DockerRemote) PullImage() (*v1Store, error) {
 		return localStore, err
 	}
 
-	if err := localStore.writeRepositoriesFile(dockerRemote.Ref, imageID); err != nil {
+	if err := localStore.writeRepositoriesFile(i.Remote.Ref, imageID); err != nil {
 		return localStore, err
 	}
 
-	if err := localStore.writeManifestFile(dockerRemote.Ref, imageID, layerV1IDs); err != nil {
+	if err := localStore.writeManifestFile(i.Remote.Ref, imageID, layerV1IDs); err != nil {
 		return localStore, err
 	}
 
@@ -402,20 +405,18 @@ func (dockerRemote *DockerRemote) PullImage() (*v1Store, error) {
 }
 
 // downloadBlob will download and write the layer to the workDir, in the docker format
-func downloadBlob(dockerRemote *DockerRemote, blobsum digest.Digest, layerDir string) (layer.DiffID, error) {
-	uri := fmt.Sprintf("https://%s/v2/%s/%s/blobs/%s", dockerRemote.Hostname, dockerRemote.Namespace, dockerRemote.ImageName, blobsum.String())
+func (i *Importer) downloadBlob(blobsum digest.Digest, layerDir string) (layer.DiffID, error) {
+	uri := fmt.Sprintf("https://%s/v2/%s/%s/blobs/%s", i.Remote.Hostname, i.Remote.Namespace, i.Remote.ImageName, blobsum.String())
 
 	log.Debugf("Downloading blob from %q\n", uri)
 
-	client := requests.GlobalHttpClient()
-
-	req, err := client.NewRequest("GET", uri, nil)
+	req, err := i.Remote.NewHttpRequest("GET", uri, nil)
 	if err != nil {
 		log.Error(err)
 		return layer.DiffID(""), err
 	}
 
-	resp, err := doRequest(req, client, dockerRemote, 0)
+	resp, err := i.Remote.DoWithRetry(req, maxRetries)
 	if err != nil {
 		return layer.DiffID(""), err
 	}
@@ -467,20 +468,18 @@ func downloadBlob(dockerRemote *DockerRemote, blobsum digest.Digest, layerDir st
 	return layer.DiffID(diffID), nil
 }
 
-func (dockerRemote *DockerRemote) getBlobStream(blobsum digest.Digest) (io.ReadCloser, int64, error) {
-	uri := fmt.Sprintf("https://%s/v2/%s/%s/blobs/%s", dockerRemote.Hostname, dockerRemote.Namespace, dockerRemote.ImageName, blobsum.String())
+func (i *Importer) getBlobStream(blobsum digest.Digest) (io.ReadCloser, int64, error) {
+	uri := fmt.Sprintf("https://%s/v2/%s/%s/blobs/%s", i.Remote.Hostname, i.Remote.Namespace, i.Remote.ImageName, blobsum.String())
 
 	log.Debugf("Downloading blob from %q", uri)
 
-	client := requests.GlobalHttpClient()
-
-	req, err := client.NewRequest("GET", uri, nil)
+	req, err := i.Remote.NewHttpRequest("GET", uri, nil)
 	if err != nil {
 		log.Error(err)
 		return nil, 0, err
 	}
 
-	resp, err := doRequest(req, client, dockerRemote, 0)
+	resp, err := i.Remote.DoWithRetry(req, maxRetries)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -503,8 +502,8 @@ func (dockerRemote *DockerRemote) getBlobStream(blobsum digest.Digest) (io.ReadC
 }
 
 // getManifest will return the remote manifest for the image.
-func (dockerRemote *DockerRemote) getManifest() (*schema1.Manifest, error) {
-	rawManifest, err := dockerRemote.getManifestBytes()
+func (i *Importer) GetManifestV1() (*schema1.Manifest, error) {
+	rawManifest, err := i.GetManifestBytes("v1")
 	if err != nil {
 		return nil, err
 	}
@@ -517,7 +516,7 @@ func (dockerRemote *DockerRemote) getManifest() (*schema1.Manifest, error) {
 
 	log.Debugf("manifest = %#v", manifest)
 
-	verifiedManifest, err := verifySchema1Manifest(&manifest, dockerRemote.Ref)
+	verifiedManifest, err := verifySchema1Manifest(&manifest, i.Remote.Ref)
 	if err != nil {
 		return nil, err
 	}
@@ -527,20 +526,18 @@ func (dockerRemote *DockerRemote) getManifest() (*schema1.Manifest, error) {
 	return verifiedManifest, nil
 }
 
-func (dockerRemote *DockerRemote) getManifestBytes() ([]byte, error) {
-	uri := fmt.Sprintf("https://%s/v2/%s/%s/manifests/%s", dockerRemote.Hostname, dockerRemote.Namespace, dockerRemote.ImageName, dockerRemote.Tag)
+func (i *Importer) GetManifestBytes(version string) ([]byte, error) {
+	uri := fmt.Sprintf("https://%s/v2/%s/%s/manifests/%s", i.Remote.Hostname, i.Remote.Namespace, i.Remote.ImageName, i.Remote.Tag)
 
-	client := requests.GlobalHttpClient()
-
-	req, err := client.NewRequest("GET", uri, nil)
+	req, err := i.Remote.NewHttpRequest("GET", uri, nil)
 	if err != nil {
 		log.Error(err)
 		return nil, err
 	}
 
-	req.Header.Set("Accept", "application/vnd.docker.distribution.manifest.v1+json")
+	req.Header.Set("Accept", fmt.Sprintf("application/vnd.docker.distribution.manifest.%s+json", version))
 
-	resp, err := doRequest(req, client, dockerRemote, 0)
+	resp, err := i.Remote.DoWithRetry(req, maxRetries)
 	if err != nil {
 		return nil, err
 	}
@@ -572,8 +569,8 @@ func getManifestFromTar(tarReader *tar.Reader, ref reference.Named) (*schema1.Ma
 		return nil, err
 	}
 
-	if hdr.Name != ManifestFileNameV2 {
-		err := fmt.Errorf("Expected %q but found %q", ManifestFileNameV2, hdr.Name)
+	if hdr.Name != ManifestFileName {
+		err := fmt.Errorf("Expected %q but found %q", ManifestFileName, hdr.Name)
 		log.Error(err)
 		return nil, err
 	}
@@ -678,22 +675,20 @@ func skipLayerInTar(tarReader *tar.Reader, blobsum digest.Digest) error {
 
 // isSupportedProtocol will communicate with the remote server and validate that it supports
 // the v2 protocol
-func isSupportedProtocol(dockerRemote *DockerRemote) (bool, error) {
+func (i *Importer) isSupportedProtocol() (bool, error) {
 	uris := []string{
-		fmt.Sprintf("https://%s/%s/", dockerRemote.Hostname, dockerRemote.PreferredProto),
-		fmt.Sprintf("https://%s/%s/_ping", dockerRemote.Hostname, dockerRemote.PreferredProto),
+		fmt.Sprintf("https://%s/%s/", i.Remote.Hostname, i.Remote.PreferredProto),
+		fmt.Sprintf("https://%s/%s/_ping", i.Remote.Hostname, i.Remote.PreferredProto),
 	}
 
 	for _, uri := range uris {
-		client := requests.GlobalHttpClient()
-
-		req, err := client.NewRequest("GET", uri, nil)
+		req, err := i.Remote.NewHttpRequest("GET", uri, nil)
 		if err != nil {
 			log.Infof("Error pinging URL %q: %v", uri, err)
 			continue
 		}
 
-		resp, err := doRequest(req, client, dockerRemote, 0)
+		resp, err := i.Remote.DoWithRetry(req, maxRetries)
 		if err != nil {
 			continue
 		}
@@ -703,116 +698,4 @@ func isSupportedProtocol(dockerRemote *DockerRemote) (bool, error) {
 		}
 	}
 	return false, nil
-}
-
-// getJWTToken will return a new JWT token from the resources in the authenticateHeader string
-func getJWTToken(dockerRemote *DockerRemote, authenticateHeader string) error {
-	if !strings.HasPrefix(authenticateHeader, "Bearer ") {
-		return errors.New("only bearer auth is implemented")
-	}
-	authenticateHeader = strings.TrimPrefix(authenticateHeader, "Bearer ")
-
-	headerParts := strings.Split(authenticateHeader, ",")
-	var realm, scope, service string
-	for _, headerPart := range headerParts {
-		split := strings.Split(headerPart, "=")
-		if len(split) != 2 {
-			continue
-		}
-
-		switch split[0] {
-		case "realm":
-			realm = strings.Trim(split[1], "\"")
-		case "service":
-			service = strings.Trim(split[1], "\"")
-		case "scope":
-			scope = strings.Trim(split[1], "\"")
-		}
-	}
-
-	v := url.Values{}
-	v.Set("service", service)
-	if len(scope) > 0 {
-		v.Set("scope", scope)
-	}
-	uri := fmt.Sprintf("%s?%s", realm, v.Encode())
-
-	log.Debugf("auth uri = %s", uri)
-	client := requests.GlobalHttpClient()
-
-	req, err := client.NewRequest("GET", uri, nil)
-	if err != nil {
-		log.Error(err)
-		return err
-	}
-
-	if dockerRemote.Username != "" && dockerRemote.Password != "" {
-		req.SetBasicAuth(dockerRemote.Username, dockerRemote.Password)
-	} else if dockerRemote.Token != "" {
-		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", dockerRemote.Token))
-	}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Error(err)
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusUnauthorized {
-		log.Error(ErrUnauthorized)
-		return ErrUnauthorized
-	} else if resp.StatusCode != http.StatusOK {
-		err := fmt.Errorf("unexpected response: %d", resp.StatusCode)
-		log.Error(err)
-		return err
-	}
-
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return err
-	}
-
-	type tokenResponse struct {
-		Token string `json:"token"`
-	}
-	tr := tokenResponse{}
-	if err := json.Unmarshal(body, &tr); err != nil {
-		return err
-	}
-
-	dockerRemote.ServiceHostname = service
-	dockerRemote.JWTToken = tr.Token
-
-	return nil
-}
-
-// doRequest will actually make the request, and will authenticate with the v2 auth server, if needed
-func doRequest(req *http.Request, client *requests.HttpClient, dockerRemote *DockerRemote, attemptNumber int) (*http.Response, error) {
-	if attemptNumber == 3 { // if count is 0 based, 3 attempts will be made
-		err := errors.New("Too many retries")
-		log.Error(err)
-		return nil, err
-	}
-
-	if dockerRemote.JWTToken != "" {
-		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", dockerRemote.JWTToken))
-	}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-
-	// Search for pullV2Tag in docker, look in pull_v1 and pull_v2
-	if resp.StatusCode == http.StatusUnauthorized {
-		// We need a token and try again...
-		if err := getJWTToken(dockerRemote, resp.Header.Get("Www-Authenticate")); err != nil {
-			return nil, err
-		}
-
-		return doRequest(req, client, dockerRemote, attemptNumber+1)
-	}
-
-	return resp, nil
 }
