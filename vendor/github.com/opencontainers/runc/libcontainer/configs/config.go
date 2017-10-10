@@ -7,8 +7,9 @@ import (
 	"os/exec"
 	"time"
 
-	"github.com/Sirupsen/logrus"
 	"github.com/opencontainers/runtime-spec/specs-go"
+
+	"github.com/sirupsen/logrus"
 )
 
 type Rlimit struct {
@@ -183,6 +184,13 @@ type Config struct {
 	// NoNewKeyring will not allocated a new session keyring for the container.  It will use the
 	// callers keyring in this case.
 	NoNewKeyring bool `json:"no_new_keyring"`
+
+	// Rootless specifies whether the container is a rootless container.
+	Rootless bool `json:"rootless"`
+
+	// IntelRdt specifies settings for Intel RDT/CAT group that the container is placed into
+	// to limit the resources (e.g., L3 cache) the container has available
+	IntelRdt *IntelRdt `json:"intel_rdt,omitempty"`
 }
 
 type Hooks struct {
