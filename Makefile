@@ -1,7 +1,7 @@
 .PHONY: all test clean install build docker shell
 
 test:
-	go test --race `go list ./... | grep -v /vendor/`
+	go test --race -v `go list ./... | grep -v /vendor/`
 
 clean:
 	rm -f ./bin/harpoon

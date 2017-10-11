@@ -124,6 +124,7 @@ func (dockerRemote *DockerRemote) getJWTToken(authenticateHeader string) error {
 
 	dockerRemote.ServiceHostname = service
 	dockerRemote.JWTToken = tr.Token
+	log.Debugf("+++++got token:%s", tr.Token)
 
 	return nil
 }

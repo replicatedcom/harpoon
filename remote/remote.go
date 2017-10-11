@@ -139,6 +139,7 @@ func (remote *DockerRemote) NewHttpRequest(method, uri string, body io.Reader) (
 	return remote.client.NewRequest(method, uri, body)
 }
 
+// Do will not attempt to authenticate if server returns a 401 (or any other error)
 func (remote *DockerRemote) Do(req *http.Request) (*http.Response, error) {
 	return remote.DoWithRetry(req, 1)
 }
@@ -155,14 +156,16 @@ func (remote *DockerRemote) DoWithRetry(req *http.Request, numAttempts int) (*ht
 		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", remote.JWTToken))
 	}
 
+	log.Debugf("++++requesting %s", req.URL)
 	resp, err := remote.client.Do(req)
 	if err != nil {
 		return nil, err
 	}
 	log.Debugf("++++resp headers:%#v", resp.Header)
 
-	// Search for pullV2Tag in docker, look in pull_v1 and pull_v2
-	if resp.StatusCode == http.StatusUnauthorized {
+	// We need to authenticate after attempting a request in order
+	// to receive correct authentication instructions.
+	if resp.StatusCode == http.StatusUnauthorized && numAttempts > 1 {
 		// We need a token and try again...
 		if err := remote.getJWTToken(resp.Header.Get("Www-Authenticate")); err != nil {
 			return nil, err
