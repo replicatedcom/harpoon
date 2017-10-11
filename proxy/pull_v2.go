@@ -2,8 +2,10 @@ package proxy
 
 import (
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
+	"strconv"
 
 	"github.com/replicatedcom/harpoon/log"
 	"github.com/replicatedcom/harpoon/remote"
@@ -17,6 +19,12 @@ type ManifestResponse struct {
 	ManifestId  string
 	ContentType string
 	SignedJson  []byte
+}
+
+type BlobResponse struct {
+	Reader        io.ReadCloser
+	ContentType   string
+	ContentLength int64
 }
 
 func (p *Proxy) GetManifestV2(namespace, imagename, reference string) (*ManifestResponse, error) {
@@ -55,6 +63,42 @@ func (p *Proxy) GetManifestV2(namespace, imagename, reference string) (*Manifest
 		ManifestId:  resp.Header.Get("Docker-Content-Digest"),
 		ContentType: resp.Header.Get("Content-Type"),
 		SignedJson:  body,
+	}
+
+	return result, nil
+}
+
+func (p *Proxy) GetBlobV2(namespace, imagename, digestFull string) (*BlobResponse, error) {
+	uri := fmt.Sprintf("https://%s/v2/%s/%s/blobs/%s", p.Remote.Hostname, namespace, imagename, digestFull)
+	log.Debugf("Getting blob from %s", uri)
+
+	req, err := p.Remote.NewHttpRequest("GET", uri, nil)
+	if err != nil {
+		log.Error(err)
+		return nil, err
+	}
+
+	resp, err := p.Remote.DoWithRetry(req, 3)
+	if err != nil {
+		log.Error(err)
+		return nil, err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		defer resp.Body.Close()
+		err := fmt.Errorf("unexpected status code %d", resp.StatusCode)
+		return nil, err
+	}
+
+	contentLength, err := strconv.ParseInt(resp.Header.Get("Content-Length"), 10, 64)
+	if err != nil {
+		log.Warningf("Unknown response size for %s", uri)
+	}
+
+	result := &BlobResponse{
+		Reader:        resp.Body,
+		ContentType:   resp.Header.Get("Content-Type"),
+		ContentLength: contentLength,
 	}
 
 	return result, nil
