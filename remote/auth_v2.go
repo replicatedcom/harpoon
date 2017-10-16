@@ -111,6 +111,7 @@ func (dockerRemote *DockerRemote) getJWTToken(authenticateHeader string) error {
 
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
+		log.Errorf("failed to read response to auth request: %v", err)
 		return err
 	}
 
@@ -119,12 +120,12 @@ func (dockerRemote *DockerRemote) getJWTToken(authenticateHeader string) error {
 	}
 	tr := tokenResponse{}
 	if err := json.Unmarshal(body, &tr); err != nil {
+		log.Errorf("unmarshal error: %v: %q", err, body)
 		return err
 	}
 
 	dockerRemote.ServiceHostname = service
 	dockerRemote.JWTToken = tr.Token
-	log.Debugf("+++++got token:%s", tr.Token)
 
 	return nil
 }
