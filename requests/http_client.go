@@ -5,10 +5,12 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 )
 
 var (
-	globalHttpClient *HttpClient
+	transportMu     sync.Mutex
+	globalTransport Transport
 )
 
 type HttpClient struct {
@@ -16,25 +18,28 @@ type HttpClient struct {
 	Transport Transport
 }
 
-func InitGlobalHttpClient(proxyParam string) error {
-	var err error
+func GetHttpClient(proxyParam string) (*HttpClient, error) {
+	transportMu.Lock()
+	defer transportMu.Unlock()
 
-	globalHttpClient, err = newHttpClient("Harpoon-Client/0_0", "", proxyParam)
-	if err != nil {
-		return err
+	if globalTransport == nil {
+		t, err := newTransport("", proxyParam)
+		if err != nil {
+			return nil, err
+		}
+		globalTransport = t
 	}
 
-	return nil
-}
-
-func newHttpClient(ua, pemFilename, proxyAddress string) (*HttpClient, error) {
 	c := &HttpClient{
 		Header: make(http.Header),
 	}
-	if ua != "" {
-		c.Header.Set("User-Agent", ua)
-	}
+	c.Header.Set("User-Agent", "Harpoon-Client/0_1")
 
+	c.Transport = globalTransport
+	return c, nil
+}
+
+func newTransport(pemFilename, proxyAddress string) (*TcpTransport, error) {
 	var t *TcpTransport
 	if pemFilename == "" {
 		t = NewTcpTransport()
@@ -47,23 +52,16 @@ func newHttpClient(ua, pemFilename, proxyAddress string) (*HttpClient, error) {
 	}
 
 	if proxyAddress != "" {
-		p := proxyAddress // necessary?
 		t.Client.Transport.(*http.Transport).Proxy = func(req *http.Request) (*url.URL, error) {
 			// Honor NO_PROXY environment variable
 			if !UseProxy(canonicalAddr(req.URL)) {
 				return nil, nil
 			}
-			return url.Parse(p)
+			return url.Parse(proxyAddress)
 		}
 	}
 
-	c.Transport = t
-
-	return c, nil
-}
-
-func GlobalHttpClient() *HttpClient {
-	return globalHttpClient
+	return t, nil
 }
 
 func (c *HttpClient) Get(url string) (*http.Response, error) {
