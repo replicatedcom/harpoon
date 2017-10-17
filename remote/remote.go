@@ -156,12 +156,10 @@ func (remote *DockerRemote) DoWithRetry(req *http.Request, numAttempts int) (*ht
 		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", remote.JWTToken))
 	}
 
-	log.Debugf("++++requesting %s", req.URL)
 	resp, err := remote.client.Do(req)
 	if err != nil {
 		return nil, err
 	}
-	log.Debugf("++++resp headers:%#v", resp.Header)
 
 	// We need to authenticate after attempting a request in order
 	// to receive correct authentication instructions.
