@@ -7,8 +7,6 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
-
-	"github.com/replicatedcom/harpoon/log"
 )
 
 // TODO: transport may be a misnomer
@@ -69,7 +67,6 @@ func replicatedCertPool(pemFilename string) (*x509.CertPool, error) {
 }
 
 func (t *TcpTransport) doRequest(req *http.Request) (*http.Response, error) {
-	log.Debugf("req.Header = %#v", req.Header)
 	return t.Client.Do(req)
 }
 
