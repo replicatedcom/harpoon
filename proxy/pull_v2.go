@@ -27,6 +27,13 @@ type BlobResponse struct {
 	ContentLength int64
 }
 
+func (b *BlobResponse) Close() error {
+	if b == nil || b.Reader == nil {
+		return nil
+	}
+	return b.Reader.Close()
+}
+
 func (p *Proxy) GetManifestV2(namespace, imagename, reference string) (*ManifestResponse, error) {
 	uri := fmt.Sprintf("https://%s/v2/%s/%s/manifests/%s", p.Remote.Hostname, namespace, imagename, reference)
 	log.Debugf("Getting manifest from %s", uri)
@@ -85,7 +92,7 @@ func (p *Proxy) GetBlobV2(namespace, imagename, digestFull string) (*BlobRespons
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		defer resp.Body.Close()
+		resp.Body.Close()
 		err := fmt.Errorf("unexpected status code %d", resp.StatusCode)
 		return nil, err
 	}

@@ -692,6 +692,7 @@ func (i *Importer) isSupportedProtocol() (bool, error) {
 		if err != nil {
 			continue
 		}
+		resp.Body.Close()
 
 		if resp.StatusCode == http.StatusOK {
 			return true, nil
