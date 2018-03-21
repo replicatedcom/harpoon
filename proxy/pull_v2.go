@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/docker/distribution/manifest/schema2"
 	"github.com/replicatedcom/harpoon/log"
 	"github.com/replicatedcom/harpoon/remote"
 )
@@ -45,7 +46,7 @@ func (p *Proxy) GetManifestV2(namespace, imagename, reference string) (*Manifest
 	}
 
 	// This does not guarantee that we will get manifest v2...
-	req.Header.Set("Accept", "application/vnd.docker.distribution.manifest.v2+json")
+	req.Header.Set("Accept", schema2.MediaTypeManifest)
 
 	resp, err := p.Remote.DoWithRetry(req, 3)
 	if err != nil {

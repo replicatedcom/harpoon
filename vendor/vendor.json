@@ -64,6 +64,12 @@
 			"revisionTime": "2017-09-29T20:51:02Z"
 		},
 		{
+			"checksumSHA1": "6k51UuibpKYVlnXXlqI3Ox5h9dQ=",
+			"path": "github.com/docker/distribution/manifest/schema2",
+			"revision": "bb49a1685d2773cb43dacc16e100419f310ba347",
+			"revisionTime": "2017-09-29T20:51:02Z"
+		},
+		{
 			"checksumSHA1": "2Fe4D6PGaVE2he4fUeenLmhC1lE=",
 			"path": "github.com/docker/distribution/reference",
 			"revision": "bb49a1685d2773cb43dacc16e100419f310ba347",

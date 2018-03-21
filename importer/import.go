@@ -21,6 +21,8 @@ func init() {
 	}
 }
 
+// ImportFromRemote imports an image into the store from a remote repo.
+// unused I THINK
 func ImportFromRemote(dockerRemote *remote.DockerRemote) error {
 	i := &Importer{Remote: dockerRemote}
 

@@ -18,6 +18,7 @@ import (
 	"github.com/replicatedcom/harpoon/remote"
 
 	"github.com/docker/distribution/manifest/schema1"
+	"github.com/docker/distribution/manifest/schema2"
 	"github.com/docker/distribution/reference"
 	"github.com/docker/docker/image"
 	"github.com/docker/docker/image/v1"
@@ -59,42 +60,55 @@ func (i *Importer) writeLayers(pipeWriter *io.PipeWriter) {
 	}
 
 	i.Remote.JWTToken = ""
-	rawManifest, writeError := i.GetManifestBytes("v1")
+	rawManifest, contentType, writeError := i.GetManifestBytes()
 	if writeError != nil {
+		log.Error(writeError)
 		return
 	}
 
+	switch contentType {
+	case schema1.MediaTypeManifest:
+		writeError = i.writeLayersV1(tarWriter, rawManifest)
+	case schema1.MediaTypeSignedManifest:
+		writeError = i.writeLayersV1(tarWriter, rawManifest)
+	case schema2.MediaTypeManifest:
+		writeError = i.writeLayersV2(tarWriter, rawManifest)
+	default:
+		writeError = fmt.Errorf("Unsupported media type %q", contentType)
+	}
+	return
+}
+
+func (i *Importer) writeLayersV1(tarWriter *tar.Writer, rawManifest []byte) error {
 	tarHeader := &tar.Header{
 		Name: ManifestFileName,
 		// Mode: 0655,
 		Size: int64(len(rawManifest)),
 	}
-	if writeError = tarWriter.WriteHeader(tarHeader); writeError != nil {
-		log.Error(writeError)
-		return
+	if err := tarWriter.WriteHeader(tarHeader); err != nil {
+		log.Error(err)
+		return err
 	}
 
-	if _, writeError = tarWriter.Write(rawManifest); writeError != nil {
-		log.Error(writeError)
-		return
+	if _, err := tarWriter.Write(rawManifest); err != nil {
+		log.Error(err)
+		return err
 	}
 
 	var manifest schema1.SignedManifest
-	if writeError = manifest.UnmarshalJSON(rawManifest); writeError != nil {
-		log.Error(writeError)
-		return
+	if err := json.Unmarshal(rawManifest, &manifest); err != nil {
+		log.Error(err)
+		return err
 	}
 
 	// Send layers in reverse because import needs to read them in reverse order
 	for j := len(manifest.FSLayers) - 1; j >= 0; j-- {
 		layer := manifest.FSLayers[j]
 
-		var blobStream io.ReadCloser
-		var expectedLenght int64
-
-		blobStream, expectedLenght, writeError = i.getBlobStream(layer.BlobSum)
-		if writeError != nil {
-			return
+		blobStream, expectedLenght, err := i.getBlobStream(layer.BlobSum)
+		if err != nil {
+			log.Error(err)
+			return err
 		}
 		defer blobStream.Close() // ok to keep open until func terminates
 
@@ -102,17 +116,69 @@ func (i *Importer) writeLayers(pipeWriter *io.PipeWriter) {
 			Name: layer.BlobSum.String(),
 			Size: expectedLenght,
 		}
-		if writeError = tarWriter.WriteHeader(tarHeader); writeError != nil {
-			log.Error(writeError)
-			return
+		if err := tarWriter.WriteHeader(tarHeader); err != nil {
+			log.Error(err)
+			return err
 		}
 
-		_, writeError = io.Copy(tarWriter, blobStream)
-		if writeError != nil {
-			log.Error(writeError)
-			return
+		if _, err := io.Copy(tarWriter, blobStream); err != nil {
+			log.Error(err)
+			return err
 		}
 	}
+
+	return nil
+}
+
+func (i *Importer) writeLayersV2(tarWriter *tar.Writer, rawManifest []byte) error {
+	tarHeader := &tar.Header{
+		Name: ManifestFileName,
+		// Mode: 0655,
+		Size: int64(len(rawManifest)),
+	}
+	if err := tarWriter.WriteHeader(tarHeader); err != nil {
+		log.Error(err)
+		return err
+	}
+
+	if _, err := tarWriter.Write(rawManifest); err != nil {
+		log.Error(err)
+		return err
+	}
+
+	var manifest schema2.DeserializedManifest
+	if err := json.Unmarshal(rawManifest, &manifest); err != nil {
+		log.Error(err)
+		return err
+	}
+
+	// Send layers in reverse because import needs to read them in reverse order
+	for j := len(manifest.Layers) - 1; j >= 0; j-- {
+		layer := manifest.Layers[j]
+
+		blobStream, expectedLenght, err := i.getBlobStream(layer.Digest)
+		if err != nil {
+			log.Error(err)
+			return err
+		}
+		defer blobStream.Close() // ok to keep open until func terminates
+
+		tarHeader := &tar.Header{
+			Name: layer.Digest.String(),
+			Size: expectedLenght,
+		}
+		if err := tarWriter.WriteHeader(tarHeader); err != nil {
+			log.Error(err)
+			return err
+		}
+
+		if _, err := io.Copy(tarWriter, blobStream); err != nil {
+			log.Error(err)
+			return err
+		}
+	}
+
+	return nil
 }
 
 // ImportFromStream will read manifest and layer data from a single tar stream
@@ -157,12 +223,12 @@ func streamToTempStore(reader io.Reader, imageURI string) (*v1Store, error) {
 			ThrowAway bool `json:"throwaway,omitempty"`
 		}
 
-		v1ImageJson := []byte(verifiedManifest.History[i].V1Compatibility)
-		if err := json.Unmarshal(v1ImageJson, &throwAway); err != nil {
+		v1ImageJSON := []byte(verifiedManifest.History[i].V1Compatibility)
+		if err := json.Unmarshal(v1ImageJSON, &throwAway); err != nil {
 			return localStore, err
 		}
 
-		h, err := v1.HistoryFromConfig(v1ImageJson, throwAway.ThrowAway)
+		h, err := v1.HistoryFromConfig(v1ImageJSON, throwAway.ThrowAway)
 		if err != nil {
 			return localStore, err
 		}
@@ -197,7 +263,7 @@ func streamToTempStore(reader io.Reader, imageURI string) (*v1Store, error) {
 		rootFS.Append(diffID) // rootFS must contain this layer ID to produce correct chain ID
 		v1Img := image.V1Image{}
 		if i == 0 {
-			if err := json.Unmarshal(v1ImageJson, &v1Img); err != nil {
+			if err := json.Unmarshal(v1ImageJSON, &v1Img); err != nil {
 				log.Error(err)
 				return localStore, err
 			}
@@ -213,12 +279,12 @@ func streamToTempStore(reader io.Reader, imageURI string) (*v1Store, error) {
 		if len(parent.String()) > 0 {
 			v1Img.Parent = parent.Hex()
 		}
-		v1ImgJson, err := json.Marshal(v1Img)
+		v1ImgJSON, err := json.Marshal(v1Img)
 		if err != nil {
 			log.Error(err)
 			return localStore, err
 		}
-		if err := ioutil.WriteFile(filepath.Join(layerTempDir, "json"), v1ImgJson, 0644); err != nil {
+		if err := ioutil.WriteFile(filepath.Join(layerTempDir, "json"), v1ImgJSON, 0644); err != nil {
 			log.Error(err)
 			return localStore, err
 		}
@@ -258,6 +324,7 @@ func streamToTempStore(reader io.Reader, imageURI string) (*v1Store, error) {
 }
 
 // PullImage will pull image from v2 with v1 (todo) fallback
+// unused I THINK
 func (i *Importer) PullImage() (*v1Store, error) {
 	// Validate that the remote server supports the v2 protocol
 
@@ -273,6 +340,12 @@ func (i *Importer) PullImage() (*v1Store, error) {
 		return nil, errors.New("Docker registry v2 protocol is not supported by remote")
 	}
 
+	// TODO: support for manifest v2
+	return i.pullImageV2ManifestV1()
+}
+
+// PullImage will pull image from v2 registry with manifest v1
+func (i *Importer) pullImageV2ManifestV1() (*v1Store, error) {
 	// Ugh, this isn't the right design to use here.
 	// But the token will be set from checking the /v2/ endpoint without a scope, which will cause a
 	// 401 when trying to pull.
@@ -307,12 +380,12 @@ func (i *Importer) PullImage() (*v1Store, error) {
 			ThrowAway bool `json:"throwaway,omitempty"`
 		}
 
-		v1ImageJson := []byte(verifiedManifest.History[j].V1Compatibility)
-		if err := json.Unmarshal(v1ImageJson, &throwAway); err != nil {
+		v1ImageJSON := []byte(verifiedManifest.History[j].V1Compatibility)
+		if err := json.Unmarshal(v1ImageJSON, &throwAway); err != nil {
 			return localStore, err
 		}
 
-		h, err := v1.HistoryFromConfig(v1ImageJson, throwAway.ThrowAway)
+		h, err := v1.HistoryFromConfig(v1ImageJSON, throwAway.ThrowAway)
 		if err != nil {
 			return localStore, err
 		}
@@ -344,7 +417,7 @@ func (i *Importer) PullImage() (*v1Store, error) {
 		rootFS.Append(diffID) // rootFS must contain this layer ID to produce correct chain ID
 		v1Img := image.V1Image{}
 		if j == 0 {
-			if err := json.Unmarshal(v1ImageJson, &v1Img); err != nil {
+			if err := json.Unmarshal(v1ImageJSON, &v1Img); err != nil {
 				log.Error(err)
 				return localStore, err
 			}
@@ -360,12 +433,12 @@ func (i *Importer) PullImage() (*v1Store, error) {
 		if len(parent.String()) > 0 {
 			v1Img.Parent = parent.Hex()
 		}
-		v1ImgJson, err := json.Marshal(v1Img)
+		v1ImgJSON, err := json.Marshal(v1Img)
 		if err != nil {
 			log.Error(err)
 			return localStore, err
 		}
-		if err := ioutil.WriteFile(filepath.Join(layerTempDir, "json"), v1ImgJson, 0644); err != nil {
+		if err := ioutil.WriteFile(filepath.Join(layerTempDir, "json"), v1ImgJSON, 0644); err != nil {
 			log.Error(err)
 			return localStore, err
 		}
@@ -503,13 +576,13 @@ func (i *Importer) getBlobStream(blobsum digest.Digest) (io.ReadCloser, int64, e
 
 // getManifest will return the remote manifest for the image.
 func (i *Importer) GetManifestV1() (*schema1.Manifest, error) {
-	rawManifest, err := i.GetManifestBytes("v1")
+	rawManifest, _, err := i.GetManifestBytes(schema1.MediaTypeManifest, schema1.MediaTypeSignedManifest)
 	if err != nil {
 		return nil, err
 	}
 
 	var manifest schema1.SignedManifest
-	if err := manifest.UnmarshalJSON(rawManifest); err != nil {
+	if err := json.Unmarshal(rawManifest, &manifest); err != nil {
 		log.Error(err)
 		return nil, err
 	}
@@ -526,39 +599,55 @@ func (i *Importer) GetManifestV1() (*schema1.Manifest, error) {
 	return verifiedManifest, nil
 }
 
-func (i *Importer) GetManifestBytes(version string) ([]byte, error) {
+func (i *Importer) GetManifestBytes(mediaTypes ...string) ([]byte, string, error) {
 	uri := fmt.Sprintf("https://%s/v2/%s/%s/manifests/%s", i.Remote.Hostname, i.Remote.Namespace, i.Remote.ImageName, i.Remote.Tag)
 
 	req, err := i.Remote.NewHttpRequest("GET", uri, nil)
 	if err != nil {
 		log.Error(err)
-		return nil, err
+		return nil, "", err
 	}
 
-	req.Header.Set("Accept", fmt.Sprintf("application/vnd.docker.distribution.manifest.%s+json", version))
+	if len(mediaTypes) == 0 {
+		mediaTypes = []string{
+			schema1.MediaTypeManifest,
+			schema1.MediaTypeSignedManifest,
+			schema2.MediaTypeManifest,
+		}
+	}
 
-	resp, err := i.Remote.DoWithRetry(req, maxRetries)
+	for _, mediaType := range mediaTypes {
+		req.Header.Set("Accept", mediaType)
+	}
+
+	log.Debugf("Get manifest %s", uri)
+
+	// We can request pull scope in case oauth implementation does not provide scope
+	// in the authorization failure.
+	additionalScope := fmt.Sprintf("repository:%s:pull", reference.Path(i.Remote.Ref))
+
+	resp, err := i.Remote.DoWithRetry(req, maxRetries, additionalScope)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		err := fmt.Errorf("Unexpected status code for %s: %d", uri, resp.StatusCode)
 		log.Error(err)
-		return nil, err
+		return nil, "", err
 	}
 
-	contentType := resp.Header.Get("Content-Type")
-	log.Debugf("Responded with content-type: %q", contentType)
+	mediaType := resp.Header.Get("Content-Type")
+	log.Debugf("Responded with media-type: %q", mediaType)
 
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		log.Error(err)
-		return nil, err
+		return nil, mediaType, err
 	}
 
-	return body, nil
+	return body, mediaType, nil
 }
 
 func getManifestFromTar(tarReader *tar.Reader, ref reference.Named) (*schema1.Manifest, error) {
@@ -583,7 +672,7 @@ func getManifestFromTar(tarReader *tar.Reader, ref reference.Named) (*schema1.Ma
 	}
 
 	var manifest schema1.SignedManifest
-	if err := manifest.UnmarshalJSON(manifestBuffer.Bytes()); err != nil {
+	if err := json.Unmarshal(manifestBuffer.Bytes(), &manifest); err != nil {
 		log.Error(err)
 		return nil, err
 	}
