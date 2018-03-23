@@ -49,7 +49,7 @@ func (dockerRemote *DockerRemote) Auth() error {
 }
 
 // getJWTToken will return a new JWT token from the resources in the authenticateHeader string
-func (dockerRemote *DockerRemote) getJWTToken(authenticateHeader string) error {
+func (dockerRemote *DockerRemote) getJWTToken(authenticateHeader string, additionalScope ...string) error {
 	if !strings.HasPrefix(authenticateHeader, "Bearer ") {
 		return errors.New("only bearer auth is implemented")
 	}
@@ -71,6 +71,12 @@ func (dockerRemote *DockerRemote) getJWTToken(authenticateHeader string) error {
 		case "scope":
 			scope = strings.Trim(split[1], "\"")
 		}
+	}
+
+	// NOTE: It seems that sometimes scope is not returned with authorization failures.
+	// Most of the time scope can be inferred by the client.
+	if scope == "" && len(additionalScope) > 0 {
+		scope = additionalScope[0]
 	}
 
 	v := url.Values{}

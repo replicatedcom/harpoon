@@ -145,7 +145,7 @@ func (remote *DockerRemote) Do(req *http.Request) (*http.Response, error) {
 }
 
 // DoRequest will actually make the request, and will authenticate with the v2 auth server, if needed
-func (remote *DockerRemote) DoWithRetry(req *http.Request, numAttempts int) (*http.Response, error) {
+func (remote *DockerRemote) DoWithRetry(req *http.Request, numAttempts int, additionalScope ...string) (*http.Response, error) {
 	if numAttempts == 0 {
 		err := errors.New("Too many retries")
 		log.Error(err)
@@ -164,8 +164,10 @@ func (remote *DockerRemote) DoWithRetry(req *http.Request, numAttempts int) (*ht
 	// We need to authenticate after attempting a request in order
 	// to receive correct authentication instructions.
 	if resp.StatusCode == http.StatusUnauthorized && numAttempts > 1 {
+		log.Debugf("Got unauthorized for url %s, retrying...", req.URL.String())
+
 		// We need a token and try again...
-		if err := remote.getJWTToken(resp.Header.Get("Www-Authenticate")); err != nil {
+		if err := remote.getJWTToken(resp.Header.Get("Www-Authenticate"), additionalScope...); err != nil {
 			return nil, err
 		}
 

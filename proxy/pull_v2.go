@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/docker/distribution/manifest/schema2"
+	"github.com/docker/distribution/reference"
 	"github.com/replicatedcom/harpoon/log"
 	"github.com/replicatedcom/harpoon/remote"
 )
@@ -34,8 +36,8 @@ func (b *BlobResponse) Close() error {
 	return b.Reader.Close()
 }
 
-func (p *Proxy) GetManifestV2(namespace, imagename, reference string) (*ManifestResponse, error) {
-	uri := fmt.Sprintf("https://%s/v2/%s/%s/manifests/%s", p.Remote.Hostname, namespace, imagename, reference)
+func (p *Proxy) GetManifestV2(namespace, imagename, ref string) (*ManifestResponse, error) {
+	uri := fmt.Sprintf("https://%s/v2/%s/%s/manifests/%s", p.Remote.Hostname, namespace, imagename, ref)
 	log.Debugf("Getting manifest from %s", uri)
 
 	req, err := p.Remote.NewHttpRequest("GET", uri, nil)
@@ -45,9 +47,13 @@ func (p *Proxy) GetManifestV2(namespace, imagename, reference string) (*Manifest
 	}
 
 	// This does not guarantee that we will get manifest v2...
-	req.Header.Set("Accept", "application/vnd.docker.distribution.manifest.v2+json")
+	req.Header.Set("Accept", schema2.MediaTypeManifest)
 
-	resp, err := p.Remote.DoWithRetry(req, 3)
+	// We can request pull scope in case oauth implementation does not provide scope
+	// in the authorization failure.
+	additionalScope := fmt.Sprintf("repository:%s:pull", reference.Path(p.Remote.Ref))
+
+	resp, err := p.Remote.DoWithRetry(req, 3, additionalScope)
 	if err != nil {
 		log.Error(err)
 		return nil, err
