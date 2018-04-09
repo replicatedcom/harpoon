@@ -16,7 +16,7 @@ var (
 	ErrUnauthorized = errors.New("Unauthorized")
 )
 
-func (dockerRemote *DockerRemote) Auth() error {
+func (dockerRemote *DockerRemote) Auth(additionalScope ...string) error {
 	uri := fmt.Sprintf("https://%s/v2/", dockerRemote.Hostname)
 
 	req, err := dockerRemote.NewHttpRequest("GET", uri, nil)
@@ -25,7 +25,7 @@ func (dockerRemote *DockerRemote) Auth() error {
 		return err
 	}
 
-	resp, err := dockerRemote.DoWithRetry(req, 3)
+	resp, err := dockerRemote.DoWithRetry(req, 3, additionalScope...)
 	if err != nil {
 		return err
 	}
