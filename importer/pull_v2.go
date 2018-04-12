@@ -60,22 +60,14 @@ func (i *Importer) writeLayers(pipeWriter *io.PipeWriter) {
 	}
 
 	i.Remote.JWTToken = ""
-	rawManifest, contentType, writeError := i.GetManifestBytes()
+	// NOTE: v2 manifests not supported here
+	rawManifest, _, writeError := i.GetManifestBytes(schema1.MediaTypeManifest) // schema1.MediaTypeSignedManifest
 	if writeError != nil {
 		log.Error(writeError)
 		return
 	}
 
-	switch contentType {
-	case schema1.MediaTypeManifest:
-		writeError = i.writeLayersV1(tarWriter, rawManifest)
-	case schema1.MediaTypeSignedManifest:
-		writeError = i.writeLayersV1(tarWriter, rawManifest)
-	case schema2.MediaTypeManifest:
-		writeError = i.writeLayersV2(tarWriter, rawManifest)
-	default:
-		writeError = fmt.Errorf("Unsupported media type %q", contentType)
-	}
+	writeError = i.writeLayersV1(tarWriter, rawManifest)
 	return
 }
 
@@ -576,7 +568,7 @@ func (i *Importer) getBlobStream(blobsum digest.Digest) (io.ReadCloser, int64, e
 
 // getManifest will return the remote manifest for the image.
 func (i *Importer) GetManifestV1() (*schema1.Manifest, error) {
-	rawManifest, _, err := i.GetManifestBytes(schema1.MediaTypeManifest, schema1.MediaTypeSignedManifest)
+	rawManifest, _, err := i.GetManifestBytes(schema1.MediaTypeManifest) // schema1.MediaTypeSignedManifest
 	if err != nil {
 		return nil, err
 	}
