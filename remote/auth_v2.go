@@ -49,29 +49,26 @@ func (dockerRemote *DockerRemote) Auth(additionalScope ...string) error {
 }
 
 // getJWTToken will return a new JWT token from the resources in the authenticateHeader string
-func (dockerRemote *DockerRemote) getJWTToken(authenticateHeader string, additionalScope ...string) error {
-	if !strings.HasPrefix(authenticateHeader, "Bearer ") {
-		return errors.New("only bearer auth is implemented")
+func (dockerRemote *DockerRemote) resolveAuth(authenticateHeader string, additionalScope ...string) error {
+	switch {
+	case strings.HasPrefix(authenticateHeader, "Basic "):
+		return dockerRemote.resolveBasicAuth()
+	case strings.HasPrefix(authenticateHeader, "Bearer "):
+		return dockerRemote.resolveBearerAuth(authenticateHeader, additionalScope...)
+	default:
+		return errors.New("Only bearer and basic auth are implemented")
 	}
+}
+
+func (dockerRemote *DockerRemote) resolveBasicAuth() error {
+	dockerRemote.basicAuth = dockerRemote.Password
+	return nil
+}
+
+func (dockerRemote *DockerRemote) resolveBearerAuth(authenticateHeader string, additionalScope ...string) error {
 	authenticateHeader = strings.TrimPrefix(authenticateHeader, "Bearer ")
 
-	headerParts := strings.Split(authenticateHeader, ",")
-	var realm, scope, service string
-	for _, headerPart := range headerParts {
-		split := strings.Split(headerPart, "=")
-		if len(split) != 2 {
-			continue
-		}
-
-		switch split[0] {
-		case "realm":
-			realm = strings.Trim(split[1], "\"")
-		case "service":
-			service = strings.Trim(split[1], "\"")
-		case "scope":
-			scope = strings.Trim(split[1], "\"")
-		}
-	}
+	realm, service, scope := parseAuthenticateHeader(authenticateHeader)
 
 	// NOTE: It seems that sometimes scope is not returned with authorization failures.
 	// Most of the time scope can be inferred by the client.
@@ -134,4 +131,25 @@ func (dockerRemote *DockerRemote) getJWTToken(authenticateHeader string, additio
 	dockerRemote.JWTToken = tr.Token
 
 	return nil
+}
+
+func parseAuthenticateHeader(authenticateHeader string) (realm, service, scope string) {
+	headerParts := strings.Split(authenticateHeader, ",")
+	for _, headerPart := range headerParts {
+		split := strings.Split(headerPart, "=")
+		if len(split) != 2 {
+			continue
+		}
+
+		switch split[0] {
+		case "realm":
+			realm = strings.Trim(split[1], "\"")
+		case "service":
+			service = strings.Trim(split[1], "\"")
+		case "scope":
+			scope = strings.Trim(split[1], "\"")
+		}
+	}
+
+	return realm, service, scope
 }
