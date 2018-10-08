@@ -5,9 +5,9 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
+	"net/textproto"
 	"strconv"
 
-	"github.com/docker/distribution/manifest/schema2"
 	"github.com/docker/distribution/reference"
 	"github.com/replicatedcom/harpoon/log"
 	"github.com/replicatedcom/harpoon/remote"
@@ -36,7 +36,7 @@ func (b *BlobResponse) Close() error {
 	return b.Reader.Close()
 }
 
-func (p *Proxy) GetManifestV2(namespace, imagename, ref string) (*ManifestResponse, error) {
+func (p *Proxy) GetManifestV2(namespace, imagename, ref string, accept []string) (*ManifestResponse, error) {
 	uri := fmt.Sprintf("https://%s/v2/%s/%s/manifests/%s", p.Remote.Hostname, namespace, imagename, ref)
 	log.Debugf("Getting manifest from %s", uri)
 
@@ -46,8 +46,12 @@ func (p *Proxy) GetManifestV2(namespace, imagename, ref string) (*ManifestRespon
 		return nil, err
 	}
 
-	// This does not guarantee that we will get manifest v2...
-	req.Header.Set("Accept", schema2.MediaTypeManifest)
+	// Get manifest schema version requested from client
+	if len(accept) > 0 {
+		req.Header[textproto.CanonicalMIMEHeaderKey("Accept")] = accept
+	}
+
+	log.Debugf("Pulling %s with accept content type: %q", imagename, accept)
 
 	// We can request pull scope in case oauth implementation does not provide scope
 	// in the authorization failure.
@@ -59,6 +63,8 @@ func (p *Proxy) GetManifestV2(namespace, imagename, ref string) (*ManifestRespon
 		return nil, err
 	}
 	defer resp.Body.Close()
+
+	log.Debugf("Got %s with content type: %q", imagename, resp.Header.Get("Content-Type"))
 
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
