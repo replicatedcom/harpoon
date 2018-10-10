@@ -4,11 +4,13 @@ import (
 	"encoding/json"
 	"io"
 	"io/ioutil"
+	"log"
 	"os"
 	"strings"
 	"testing"
 
-	"github.com/replicatedcom/harpoon/log"
+	"github.com/docker/distribution/manifest/schema2"
+	"github.com/docker/distribution/reference"
 	"github.com/replicatedcom/harpoon/remote"
 
 	"github.com/stretchr/testify/assert"
@@ -24,9 +26,11 @@ func TestPull(t *testing.T) {
 		PreferredProto: "v2",
 	}
 
-	var err error
+	named, err := reference.ParseNormalizedNamed(os.Getenv("PRIVATE_IMAGE"))
+	require.NoError(t, err)
+	dockerRemote.Ref = reference.TagNameOnly(named)
 
-	log.Debugf("calling InitClient")
+	log.Println("calling InitClient")
 	err = dockerRemote.InitClient()
 	require.NoError(t, err)
 
@@ -34,10 +38,13 @@ func TestPull(t *testing.T) {
 	parts := strings.Split(os.Getenv("PRIVATE_IMAGE"), "/") // like, quay.io/replicatedcom/market-api:973f05b
 	imageParts := strings.Split(parts[2], ":")
 
-	p := &Proxy{Remote: dockerRemote}
-	manifestResult, err := p.GetManifestV2(parts[1], imageParts[0], imageParts[1])
+	p := &Proxy{
+		Remote: dockerRemote,
+	}
+
+	manifestResult, err := p.GetManifestV2(parts[1], imageParts[0], imageParts[1], []string{schema2.MediaTypeManifest})
 	require.NoError(t, err)
-	log.Debugf("manifest JSON:%s", manifestResult.SignedJson)
+	log.Printf("manifest JSON:\n%s", manifestResult.SignedJson)
 
 	type Layer struct {
 		BlobSum string `json:"blobSum"`
@@ -49,7 +56,7 @@ func TestPull(t *testing.T) {
 	manifest := &Manifest{}
 	err = json.Unmarshal(manifestResult.SignedJson, manifest)
 	require.NoError(t, err)
-	log.Debugf("layers:%#v", manifest)
+	log.Printf("layers:\n%#v", manifest)
 
 	assert.NotEmpty(t, manifest.FSLayers)
 
@@ -58,12 +65,12 @@ func TestPull(t *testing.T) {
 		blobResult, err := p.GetBlobV2(parts[1], imageParts[0], manifest.FSLayers[i].BlobSum)
 		require.NoError(t, err)
 
-		log.Debugf("blobResult:%#v", blobResult)
+		log.Printf("blobResult:\n%#v", blobResult)
 		defer blobResult.Reader.Close()
 		n, err := io.Copy(ioutil.Discard, blobResult.Reader)
 		require.NoError(t, err)
 
-		log.Debugf("copied %d bytes", n)
+		log.Printf("copied %d bytes", n)
 		assert.Equal(t, blobResult.ContentLength, n)
 	}
 }
