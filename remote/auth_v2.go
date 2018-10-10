@@ -146,10 +146,11 @@ func (dockerRemote *DockerRemote) resolveECRAuth(ecrEndpoint string) error {
 	})
 	if err != nil {
 		log.Error(err)
+		return err
 	}
 
 	if len(ecrToken.AuthorizationData) == 0 {
-		err := errors.New("Provided ECR repo not accessible with credentials")
+		err := fmt.Errorf("Provided ECR repo: %s not accessible with credentials", ecrEndpoint)
 		log.Error(err)
 		return err
 	}
