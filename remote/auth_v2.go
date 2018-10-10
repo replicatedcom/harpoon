@@ -9,6 +9,10 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/ecr"
 	"github.com/replicatedcom/harpoon/log"
 )
 
@@ -51,18 +55,11 @@ func (dockerRemote *DockerRemote) Auth(additionalScope ...string) error {
 // getJWTToken will return a new JWT token from the resources in the authenticateHeader string
 func (dockerRemote *DockerRemote) resolveAuth(authenticateHeader string, additionalScope ...string) error {
 	switch {
-	case strings.HasPrefix(authenticateHeader, "Basic "):
-		return dockerRemote.resolveBasicAuth()
 	case strings.HasPrefix(authenticateHeader, "Bearer "):
 		return dockerRemote.resolveBearerAuth(authenticateHeader, additionalScope...)
 	default:
-		return errors.New("Only bearer and basic auth are implemented")
+		return errors.New("Only bearer auth is implemented")
 	}
-}
-
-func (dockerRemote *DockerRemote) resolveBasicAuth() error {
-	dockerRemote.basicAuth = dockerRemote.Password
-	return nil
 }
 
 func (dockerRemote *DockerRemote) resolveBearerAuth(authenticateHeader string, additionalScope ...string) error {
@@ -128,8 +125,38 @@ func (dockerRemote *DockerRemote) resolveBearerAuth(authenticateHeader string, a
 	}
 
 	dockerRemote.ServiceHostname = service
-	dockerRemote.JWTToken = tr.Token
+	dockerRemote.JWTToken = fmt.Sprintf("Bearer %s", tr.Token)
 
+	return nil
+}
+
+func (dockerRemote *DockerRemote) resolveECRAuth(ecrEndpoint string) error {
+	registry, zone, err := parseECREndpoint(ecrEndpoint)
+	if err != nil {
+		log.Error(err)
+		return err
+	}
+
+	ecrService := getECRService(dockerRemote.Username, dockerRemote.Password, zone)
+
+	ecrToken, err := ecrService.GetAuthorizationToken(&ecr.GetAuthorizationTokenInput{
+		RegistryIds: []*string{
+			&registry,
+		},
+	})
+	if err != nil {
+		log.Error(err)
+	}
+
+	if len(ecrToken.AuthorizationData) == 0 {
+		err := errors.New("Provided ECR repo not accessible with credentials")
+		log.Error(err)
+		return err
+	}
+
+	token := *ecrToken.AuthorizationData[0].AuthorizationToken
+
+	dockerRemote.JWTToken = fmt.Sprintf("Basic %s", token)
 	return nil
 }
 
@@ -152,4 +179,19 @@ func parseAuthenticateHeader(authenticateHeader string) (realm, service, scope s
 	}
 
 	return realm, service, scope
+}
+
+func getECRService(accessKeyID, secretAccessKey, zone string) *ecr.ECR {
+	awsConfig := &aws.Config{Region: aws.String(zone)}
+	awsConfig.Credentials = credentials.NewStaticCredentials(accessKeyID, secretAccessKey, "")
+	return ecr.New(session.New(awsConfig))
+}
+
+func parseECREndpoint(endpoint string) (registry, zone string, err error) {
+	splitEndpoint := strings.Split(endpoint, ".")
+	if len(splitEndpoint) < 5 {
+		return "", "", errors.New("Invalid ECR URL")
+	}
+
+	return splitEndpoint[0], splitEndpoint[3], nil
 }
