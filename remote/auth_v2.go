@@ -9,6 +9,10 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/ecr"
 	"github.com/replicatedcom/harpoon/log"
 )
 
@@ -48,30 +52,20 @@ func (dockerRemote *DockerRemote) Auth(additionalScope ...string) error {
 	return nil
 }
 
-// getJWTToken will return a new JWT token from the resources in the authenticateHeader string
-func (dockerRemote *DockerRemote) getJWTToken(authenticateHeader string, additionalScope ...string) error {
-	if !strings.HasPrefix(authenticateHeader, "Bearer ") {
-		return errors.New("only bearer auth is implemented")
+// resolveAuth will return a new JWT token from the resources in the authenticateHeader string
+func (dockerRemote *DockerRemote) resolveAuth(authenticateHeader string, additionalScope ...string) error {
+	switch {
+	case strings.HasPrefix(authenticateHeader, "Bearer "):
+		return dockerRemote.resolveBearerAuth(authenticateHeader, additionalScope...)
+	default:
+		return errors.New("Only bearer auth is implemented")
 	}
+}
+
+func (dockerRemote *DockerRemote) resolveBearerAuth(authenticateHeader string, additionalScope ...string) error {
 	authenticateHeader = strings.TrimPrefix(authenticateHeader, "Bearer ")
 
-	headerParts := strings.Split(authenticateHeader, ",")
-	var realm, scope, service string
-	for _, headerPart := range headerParts {
-		split := strings.Split(headerPart, "=")
-		if len(split) != 2 {
-			continue
-		}
-
-		switch split[0] {
-		case "realm":
-			realm = strings.Trim(split[1], "\"")
-		case "service":
-			service = strings.Trim(split[1], "\"")
-		case "scope":
-			scope = strings.Trim(split[1], "\"")
-		}
-	}
+	realm, service, scope := parseAuthenticateHeader(authenticateHeader)
 
 	// NOTE: It seems that sometimes scope is not returned with authorization failures.
 	// Most of the time scope can be inferred by the client.
@@ -131,7 +125,74 @@ func (dockerRemote *DockerRemote) getJWTToken(authenticateHeader string, additio
 	}
 
 	dockerRemote.ServiceHostname = service
-	dockerRemote.JWTToken = tr.Token
+	dockerRemote.AuthHeader = fmt.Sprintf("Bearer %s", tr.Token)
 
 	return nil
+}
+
+func (dockerRemote *DockerRemote) resolveECRAuth(ecrEndpoint string) error {
+	registry, zone, err := parseECREndpoint(ecrEndpoint)
+	if err != nil {
+		log.Error(err)
+		return err
+	}
+
+	ecrService := getECRService(dockerRemote.Username, dockerRemote.Password, zone)
+
+	ecrToken, err := ecrService.GetAuthorizationToken(&ecr.GetAuthorizationTokenInput{
+		RegistryIds: []*string{
+			&registry,
+		},
+	})
+	if err != nil {
+		log.Error(err)
+		return err
+	}
+
+	if len(ecrToken.AuthorizationData) == 0 {
+		err := fmt.Errorf("Provided ECR repo: %s not accessible with credentials", ecrEndpoint)
+		log.Error(err)
+		return err
+	}
+
+	token := *ecrToken.AuthorizationData[0].AuthorizationToken
+
+	dockerRemote.AuthHeader = fmt.Sprintf("Basic %s", token)
+	return nil
+}
+
+func parseAuthenticateHeader(authenticateHeader string) (realm, service, scope string) {
+	headerParts := strings.Split(authenticateHeader, ",")
+	for _, headerPart := range headerParts {
+		split := strings.Split(headerPart, "=")
+		if len(split) != 2 {
+			continue
+		}
+
+		switch split[0] {
+		case "realm":
+			realm = strings.Trim(split[1], "\"")
+		case "service":
+			service = strings.Trim(split[1], "\"")
+		case "scope":
+			scope = strings.Trim(split[1], "\"")
+		}
+	}
+
+	return realm, service, scope
+}
+
+func getECRService(accessKeyID, secretAccessKey, zone string) *ecr.ECR {
+	awsConfig := &aws.Config{Region: aws.String(zone)}
+	awsConfig.Credentials = credentials.NewStaticCredentials(accessKeyID, secretAccessKey, "")
+	return ecr.New(session.New(awsConfig))
+}
+
+func parseECREndpoint(endpoint string) (registry, zone string, err error) {
+	splitEndpoint := strings.Split(endpoint, ".")
+	if len(splitEndpoint) < 5 {
+		return "", "", errors.New("Invalid ECR URL")
+	}
+
+	return splitEndpoint[0], splitEndpoint[3], nil
 }

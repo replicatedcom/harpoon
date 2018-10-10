@@ -37,7 +37,14 @@ func (b *BlobResponse) Close() error {
 }
 
 func (p *Proxy) GetManifestV2(namespace, imagename, ref string, accept []string) (*ManifestResponse, error) {
-	uri := fmt.Sprintf("https://%s/v2/%s/%s/manifests/%s", p.Remote.Hostname, namespace, imagename, ref)
+	var uri string
+	// ECR repos are not given a namespace unless the following repo naming convention is followed:
+	// `my-example-namespace/my-repo`
+	if len(namespace) == 0 {
+		uri = fmt.Sprintf("https://%s/v2/%s/manifests/%s", p.Remote.Hostname, imagename, ref)
+	} else {
+		uri = fmt.Sprintf("https://%s/v2/%s/%s/manifests/%s", p.Remote.Hostname, namespace, imagename, ref)
+	}
 	log.Debugf("Getting manifest from %s", uri)
 
 	req, err := p.Remote.NewHttpRequest("GET", uri, nil)
@@ -88,7 +95,14 @@ func (p *Proxy) GetManifestV2(namespace, imagename, ref string, accept []string)
 }
 
 func (p *Proxy) GetBlobV2(namespace, imagename, digestFull string) (*BlobResponse, error) {
-	uri := fmt.Sprintf("https://%s/v2/%s/%s/blobs/%s", p.Remote.Hostname, namespace, imagename, digestFull)
+	var uri string
+	// ECR repos are not given a namespace unless the following repo naming convention is followed:
+	// `my-example-namespace/my-repo`
+	if len(namespace) == 0 {
+		uri = fmt.Sprintf("https://%s/v2/%s/blobs/%s", p.Remote.Hostname, imagename, digestFull)
+	} else {
+		uri = fmt.Sprintf("https://%s/v2/%s/%s/blobs/%s", p.Remote.Hostname, namespace, imagename, digestFull)
+	}
 	log.Debugf("Getting blob from %s", uri)
 
 	req, err := p.Remote.NewHttpRequest("GET", uri, nil)

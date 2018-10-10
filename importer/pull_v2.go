@@ -59,7 +59,7 @@ func (i *Importer) writeLayers(pipeWriter *io.PipeWriter) {
 		return
 	}
 
-	i.Remote.JWTToken = ""
+	i.Remote.AuthHeader = ""
 	// NOTE: v2 manifests not supported here
 	rawManifest, _, writeError := i.GetManifestBytes(schema1.MediaTypeManifest) // schema1.MediaTypeSignedManifest
 	if writeError != nil {
@@ -341,7 +341,7 @@ func (i *Importer) pullImageV2ManifestV1() (*v1Store, error) {
 	// Ugh, this isn't the right design to use here.
 	// But the token will be set from checking the /v2/ endpoint without a scope, which will cause a
 	// 401 when trying to pull.
-	i.Remote.JWTToken = ""
+	i.Remote.AuthHeader = ""
 
 	verifiedManifest, err := i.GetManifestV1()
 	if err != nil {
