@@ -52,7 +52,7 @@ func (dockerRemote *DockerRemote) Auth(additionalScope ...string) error {
 	return nil
 }
 
-// getJWTToken will return a new JWT token from the resources in the authenticateHeader string
+// resolveAuth will return a new JWT token from the resources in the authenticateHeader string
 func (dockerRemote *DockerRemote) resolveAuth(authenticateHeader string, additionalScope ...string) error {
 	switch {
 	case strings.HasPrefix(authenticateHeader, "Bearer "):
@@ -125,7 +125,7 @@ func (dockerRemote *DockerRemote) resolveBearerAuth(authenticateHeader string, a
 	}
 
 	dockerRemote.ServiceHostname = service
-	dockerRemote.JWTToken = fmt.Sprintf("Bearer %s", tr.Token)
+	dockerRemote.AuthHeader = fmt.Sprintf("Bearer %s", tr.Token)
 
 	return nil
 }
@@ -157,7 +157,7 @@ func (dockerRemote *DockerRemote) resolveECRAuth(ecrEndpoint string) error {
 
 	token := *ecrToken.AuthorizationData[0].AuthorizationToken
 
-	dockerRemote.JWTToken = fmt.Sprintf("Basic %s", token)
+	dockerRemote.AuthHeader = fmt.Sprintf("Basic %s", token)
 	return nil
 }
 
