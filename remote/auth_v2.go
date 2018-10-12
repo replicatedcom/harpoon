@@ -189,10 +189,21 @@ func getECRService(accessKeyID, secretAccessKey, zone string) *ecr.ECR {
 }
 
 func parseECREndpoint(endpoint string) (registry, zone string, err error) {
+	invalidECRErr := errors.New("Invalid ECR URL")
 	splitEndpoint := strings.Split(endpoint, ".")
-	if len(splitEndpoint) < 5 {
-		return "", "", errors.New("Invalid ECR URL")
+	if len(splitEndpoint) < 6 {
+		log.Debugf("Invalid ECR endpoint: %s provided", endpoint)
+		return "", "", invalidECRErr
+	}
+
+	if splitEndpoint[1] != "dkr" || splitEndpoint[2] != "ecr" {
+		log.Debugf("Invalid ECR endpoint: %s provided", endpoint)
+		return "", "", invalidECRErr
 	}
 
 	return splitEndpoint[0], splitEndpoint[3], nil
+}
+
+func isValidAWSEndpoint(host string) bool {
+	return strings.HasSuffix(host, ".amazonaws.com")
 }

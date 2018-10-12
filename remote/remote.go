@@ -166,7 +166,7 @@ func (remote *DockerRemote) DoWithRetry(req *http.Request, numAttempts int, addi
 	if resp.StatusCode == http.StatusUnauthorized && numAttempts > 1 {
 		log.Debugf("Got unauthorized for url %s, retrying...", req.URL.String())
 
-		isAWS := strings.Contains("amazonaws.com", req.Host)
+		isAWS := isValidAWSEndpoint(req.Host)
 		if err != nil {
 			log.Error(err)
 		}
