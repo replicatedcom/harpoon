@@ -6,7 +6,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"regexp"
 	"strings"
 
 	"github.com/replicatedcom/harpoon/log"
@@ -167,7 +166,7 @@ func (remote *DockerRemote) DoWithRetry(req *http.Request, numAttempts int, addi
 	if resp.StatusCode == http.StatusUnauthorized && numAttempts > 1 {
 		log.Debugf("Got unauthorized for url %s, retrying...", req.URL.String())
 
-		isAWS, err := regexp.Match("amazonaws.com", []byte(req.Host))
+		isAWS := strings.Contains("amazonaws.com", req.Host)
 		if err != nil {
 			log.Error(err)
 		}
