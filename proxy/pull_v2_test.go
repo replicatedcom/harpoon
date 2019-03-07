@@ -62,7 +62,7 @@ func TestPull(t *testing.T) {
 
 	// this will download 2 layers...
 	for i := 1; i < 3; i++ {
-		blobResult, err := p.GetBlobV2(parts[1], imageParts[0], manifest.FSLayers[i].BlobSum)
+		blobResult, err := p.GetBlobV2(parts[1], imageParts[0], manifest.FSLayers[i].BlobSum, nil)
 		require.NoError(t, err)
 
 		log.Printf("blobResult:\n%#v", blobResult)
