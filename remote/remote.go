@@ -164,6 +164,8 @@ func (remote *DockerRemote) DoWithRetry(req *http.Request, numAttempts int, addi
 	// We need to authenticate after attempting a request in order
 	// to receive correct authentication instructions.
 	if resp.StatusCode == http.StatusUnauthorized && numAttempts > 1 {
+		resp.Body.Close()
+
 		log.Debugf("Got unauthorized for url %s, retrying...", req.URL.String())
 
 		isAWS := isValidAWSEndpoint(req.Host)

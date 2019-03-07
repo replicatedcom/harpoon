@@ -27,6 +27,9 @@ type BlobResponse struct {
 	Reader        io.ReadCloser
 	ContentType   string
 	ContentLength int64
+	ContentRange  string
+	StatusCode    int
+	Header        http.Header
 }
 
 func (b *BlobResponse) Close() error {
@@ -94,7 +97,23 @@ func (p *Proxy) GetManifestV2(namespace, imagename, ref string, accept []string)
 	return result, nil
 }
 
-func (p *Proxy) GetBlobV2(namespace, imagename, digestFull string) (*BlobResponse, error) {
+func (p *Proxy) GetBlobV2(namespace, imagename, digestFull string, additionalHeaders http.Header) (*BlobResponse, error) {
+	req, err := p.makeBlobRequest("GET", namespace, imagename, digestFull, additionalHeaders)
+	if err != nil {
+		log.Errorf("Failed to make proxied blob request for %s", req.URL.String())
+		return nil, err
+	}
+
+	resp, err := p.Remote.DoWithRetry(req, 3)
+	if err != nil {
+		log.Errorf("Failed to do proxied blob request for %s", req.URL.String())
+		return nil, err
+	}
+
+	return p.makeBlobResponse(resp, req.URL.String()), nil
+}
+
+func (p *Proxy) makeBlobRequest(httpMethod, namespace, imagename, digestFull string, additionalHeaders http.Header) (*http.Request, error) {
 	var uri string
 	// ECR repos are not given a namespace unless the following repo naming convention is followed:
 	// `my-example-namespace/my-repo`
@@ -105,34 +124,38 @@ func (p *Proxy) GetBlobV2(namespace, imagename, digestFull string) (*BlobRespons
 	}
 	log.Debugf("Getting blob from %s", uri)
 
-	req, err := p.Remote.NewHttpRequest("GET", uri, nil)
+	req, err := p.Remote.NewHttpRequest(httpMethod, uri, nil)
 	if err != nil {
-		log.Error(err)
 		return nil, err
 	}
 
-	resp, err := p.Remote.DoWithRetry(req, 3)
-	if err != nil {
-		log.Error(err)
-		return nil, err
+	for key, vals := range additionalHeaders {
+		req.Header[key] = vals
 	}
 
-	if resp.StatusCode != http.StatusOK {
-		resp.Body.Close()
-		err := fmt.Errorf("unexpected status code %d", resp.StatusCode)
-		return nil, err
-	}
+	return req, nil
+}
 
-	contentLength, err := strconv.ParseInt(resp.Header.Get("Content-Length"), 10, 64)
-	if err != nil {
-		log.Warningf("Unknown response size for %s", uri)
+func (p *Proxy) makeBlobResponse(resp *http.Response, uri string) *BlobResponse {
+	var contentLength int64
+	if resp.Header.Get("Content-Length") == "" {
+		log.Warningf("Content length empty for %s", uri)
+	} else {
+		l, err := strconv.ParseInt(resp.Header.Get("Content-Length"), 10, 64)
+		if err != nil {
+			log.Warningf("Unknown content length for %s", uri)
+		}
+		contentLength = l
 	}
 
 	result := &BlobResponse{
 		Reader:        resp.Body,
 		ContentType:   resp.Header.Get("Content-Type"),
 		ContentLength: contentLength,
+		ContentRange:  resp.Header.Get("Content-Range"),
+		StatusCode:    resp.StatusCode,
+		Header:        resp.Header,
 	}
 
-	return result, nil
+	return result
 }
