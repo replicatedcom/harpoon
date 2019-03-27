@@ -83,9 +83,12 @@ func (p *Proxy) GetManifestV2(namespace, imagename, ref string, accept []string)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		err := fmt.Errorf("unexpected status code %d", resp.StatusCode)
 		log.Errorf("status=%d; error=%s", resp.StatusCode, body)
-		return nil, err
+		return nil, &ProxyError{
+			StatusCode:   resp.StatusCode,
+			ResponseBody: body,
+			ContentType:  resp.Header.Get("Content-Type"),
+		}
 	}
 
 	result := &ManifestResponse{
