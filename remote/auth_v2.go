@@ -103,15 +103,17 @@ func (dockerRemote *DockerRemote) resolveBearerAuth(authenticateHeader string, a
 	if resp.StatusCode == http.StatusUnauthorized {
 		log.Error(ErrUnauthorized)
 		return ErrUnauthorized
-	} else if resp.StatusCode != http.StatusOK {
-		err := fmt.Errorf("unexpected response: %d", resp.StatusCode)
-		log.Error(err)
-		return err
 	}
 
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		log.Errorf("failed to read response to auth request: %v", err)
+		return err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		err := fmt.Errorf("unexpected response: %d", resp.StatusCode)
+		log.Errorf("unexpected response status=%d; error=%s", resp.StatusCode, body)
 		return err
 	}
 
