@@ -57,8 +57,10 @@ func (dockerRemote *DockerRemote) resolveAuth(authenticateHeader string, additio
 	switch {
 	case strings.HasPrefix(authenticateHeader, "Bearer "):
 		return dockerRemote.resolveBearerAuth(authenticateHeader, additionalScope...)
+	case strings.HasPrefix(authenticateHeader, "Basic "):
+		return dockerRemote.resolveBasicAuth(authenticateHeader, additionalScope...)
 	default:
-		return errors.New("Only bearer auth is implemented")
+		return fmt.Errorf("unsupported authentication type: %s", authenticateHeader)
 	}
 }
 
@@ -128,6 +130,58 @@ func (dockerRemote *DockerRemote) resolveBearerAuth(authenticateHeader string, a
 
 	dockerRemote.ServiceHostname = service
 	dockerRemote.AuthHeader = fmt.Sprintf("Bearer %s", tr.Token)
+
+	return nil
+}
+
+func (dockerRemote *DockerRemote) resolveBasicAuth(authenticateHeader string, additionalScope ...string) error {
+	// Logging on info level for troubleshooting
+	log.Infof("Resolving basic auth header: %s", authenticateHeader)
+
+	v := url.Values{}
+	if len(additionalScope) > 0 {
+		v.Set("scope", additionalScope[0])
+	}
+
+	uri := fmt.Sprintf("https://%s?%s", dockerRemote.Hostname, v.Encode())
+
+	log.Debugf("auth uri = %s", uri)
+	req, err := dockerRemote.NewHttpRequest("GET", uri, nil)
+	if err != nil {
+		log.Error(err)
+		return err
+	}
+
+	req.SetBasicAuth(dockerRemote.Username, dockerRemote.Password)
+
+	resp, err := dockerRemote.Do(req)
+	if err != nil {
+		log.Error(err)
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusUnauthorized {
+		log.Error(ErrUnauthorized)
+		return ErrUnauthorized
+	}
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Errorf("failed to read response to auth request: %v", err)
+		return err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		err := fmt.Errorf("unexpected response: %d", resp.StatusCode)
+		log.Errorf("unexpected response status=%d; error=%s", resp.StatusCode, body)
+		return err
+	}
+
+	// TODO: github responds with `{"status": "ok", "message": "Hello, world! This is the GitHub Package Registry."}`
+	// so not sure what to do with response until there is a registry that uses it.
+
+	dockerRemote.AuthHeader = req.Header.Get("Authorization")
 
 	return nil
 }
