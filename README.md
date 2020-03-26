@@ -31,16 +31,6 @@ Pull a private image from quay.io named "priv", tag "abc", owned by quay.io orga
 docker://quay.io/org/priv:abc
 
 
-## Contributing
-```shell
-make docker shell
-```
-
-Once in the container:
-```shell
-make install build
-```
-
 ### Testing
 
 Some tests require credentials to interact with Docker hub.  No data will be changed, but you should
