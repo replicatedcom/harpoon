@@ -1,6 +1,4 @@
-FROM golang:1.8
-
-RUN go get github.com/kardianos/govendor
+FROM golang:1.12
 
 ENV PROJECTPATH=/go/src/github.com/replicatedcom/harpoon
 ENV PATH $PATH:$PROJECTPATH/go/bin

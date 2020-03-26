@@ -16,7 +16,7 @@ func TestNewRequest(t *testing.T) {
 	}
 
 	uaHeader := req.Header.Get("User-Agent")
-	if uaHeader != "Replicated-Client/1_1" {
+	if uaHeader != "Harpoon-Client/0_1" {
 		t.Errorf("Unexpected \"User-Agent\" header %s", uaHeader)
 	}
 }
