@@ -1,21 +1,23 @@
-.PHONY: all test clean install build docker shell
+export GO111MODULE=on
 
+.PHONY: test
 test:
-	go test --race -v `go list ./... | grep -v /vendor/`
+	go test --race -v ./...
 
+.PHONY: clean
 clean:
 	rm -f ./bin/harpoon
 
-install:
-	govendor install +local +vendor,^program
-
+.PHONY: build
 build:
 	mkdir -p ./bin
 	go build -o ./bin/harpoon .
 
+.PHONY: docker
 docker:
 	docker build -t harpoon .
 
+.PHONY: shell
 shell:
 	docker run --rm -it -P --name harpoon \
 		--add-host registry.replicated.com:192.168.100.100 \
