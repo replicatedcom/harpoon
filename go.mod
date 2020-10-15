@@ -17,8 +17,8 @@ require (
 	github.com/gogo/protobuf v1.3.1 // indirect
 	github.com/google/go-cmp v0.4.0 // indirect
 	github.com/gorilla/mux v1.8.0 // indirect
-	github.com/jmespath/go-jmespath v0.0.0-20180206201540-c2b33e8439af // indirect
-	github.com/mattn/go-shellwords v0.0.0-20170828041123-95c860c1895b // indirect
+	github.com/jmespath/go-jmespath v0.4.0 // indirect
+	github.com/mattn/go-shellwords v1.0.10 // indirect
 	github.com/morikuni/aec v1.0.0 // indirect
 	github.com/namsral/flag v0.0.0-20160516205227-417f4c49833f
 	github.com/op/go-logging v0.0.0-20160315200505-970db520ece7

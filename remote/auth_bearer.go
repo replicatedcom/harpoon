@@ -58,22 +58,6 @@ type realClock struct{}
 // Now implements clock
 func (realClock) Now() time.Time { return time.Now() }
 
-// NewTokenHandler creates a new AuthenicationHandler which supports
-// fetching tokens from a remote token server.
-func NewTokenHandler(transport http.RoundTripper, creds auth.CredentialStore, scope string, actions ...string) *tokenHandler {
-	// Create options...
-	return NewTokenHandlerWithOptions(auth.TokenHandlerOptions{
-		Transport:   transport,
-		Credentials: creds,
-		Scopes: []auth.Scope{
-			auth.RepositoryScope{
-				Repository: scope,
-				Actions:    actions,
-			},
-		},
-	})
-}
-
 // NewTokenHandlerWithOptions creates a new token handler using the provided
 // options structure.
 func NewTokenHandlerWithOptions(options auth.TokenHandlerOptions) *tokenHandler {

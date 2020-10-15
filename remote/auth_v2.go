@@ -12,6 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ecr"
 	"github.com/docker/distribution/registry/api/errcode"
+	"github.com/docker/distribution/registry/client/auth"
 	"github.com/docker/distribution/registry/client/transport"
 	dockertypes "github.com/docker/docker/api/types"
 	"github.com/docker/docker/registry"
@@ -87,7 +88,15 @@ func (dockerRemote *DockerRemote) resolveBearerAuth(authenticateHeader string, a
 		// TODO: what is dockerRemote.Token?
 	}
 	creds := registry.NewStaticCredentialStore(credentialAuthConfig)
-	th := NewTokenHandler(authTransport, creds, scope)
+	th := NewTokenHandlerWithOptions(auth.TokenHandlerOptions{
+		Transport:   authTransport,
+		Credentials: creds,
+	})
+
+	if scope != "" {
+		additionalScope = append([]string{scope}, additionalScope...)
+	}
+	additionalScope = uniqueStringSlice(additionalScope)
 
 	token, err := th.GetToken(params, additionalScope...)
 	if err != nil {
@@ -241,4 +250,16 @@ func parseECREndpoint(endpoint string) (registry, zone string, err error) {
 
 func isValidAWSEndpoint(host string) bool {
 	return strings.HasSuffix(host, ".amazonaws.com")
+}
+
+func uniqueStringSlice(strSlice []string) []string {
+	keys := make(map[string]bool)
+	next := []string{}
+	for _, entry := range strSlice {
+		if _, value := keys[entry]; !value {
+			keys[entry] = true
+			next = append(next, entry)
+		}
+	}
+	return next
 }
