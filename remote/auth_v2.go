@@ -1,8 +1,6 @@
 package remote
 
 import (
-	"encoding/json"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -13,6 +11,11 @@ import (
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ecr"
+	"github.com/docker/distribution/registry/api/errcode"
+	"github.com/docker/distribution/registry/client/transport"
+	dockertypes "github.com/docker/docker/api/types"
+	"github.com/docker/docker/registry"
+	"github.com/pkg/errors"
 	"github.com/replicatedcom/harpoon/log"
 )
 
@@ -69,69 +72,45 @@ func (dockerRemote *DockerRemote) resolveBearerAuth(authenticateHeader string, a
 
 	realm, service, scope := parseAuthenticateHeader(authenticateHeader)
 
-	// NOTE: It seems that sometimes scope is not returned with authorization failures.
-	// Most of the time scope can be inferred by the client.
-	if scope == "" && len(additionalScope) > 0 {
-		scope = additionalScope[0]
+	params := map[string]string{
+		"realm":   realm,
+		"service": service,
 	}
 
-	v := url.Values{}
-	v.Set("service", service)
-	if len(scope) > 0 {
-		v.Set("scope", scope)
-	}
-	uri := fmt.Sprintf("%s?%s", realm, v.Encode())
+	modifiers := registry.Headers("Replicated", nil)
+	authTransport := transport.NewTransport(registry.NewTransport(nil), modifiers...)
 
-	log.Debugf("auth uri = %s", uri)
-	req, err := dockerRemote.NewHttpRequest("GET", uri, nil)
+	credentialAuthConfig := &dockertypes.AuthConfig{
+		Username:      dockerRemote.Username,
+		Password:      dockerRemote.Password,
+		ServerAddress: dockerRemote.Hostname,
+		// TODO: what is dockerRemote.Token?
+	}
+	creds := registry.NewStaticCredentialStore(credentialAuthConfig)
+	th := NewTokenHandler(authTransport, creds, scope)
+
+	token, err := th.GetToken(params, additionalScope...)
 	if err != nil {
-		log.Error(err)
-		return err
-	}
-
-	if dockerRemote.Username != "" && dockerRemote.Password != "" {
-		req.SetBasicAuth(dockerRemote.Username, dockerRemote.Password)
-	} else if dockerRemote.Token != "" {
-		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", dockerRemote.Token))
-	}
-
-	resp, err := dockerRemote.Do(req)
-	if err != nil {
-		log.Error(err)
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusUnauthorized {
-		log.Error(ErrUnauthorized)
-		return ErrUnauthorized
-	}
-
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		log.Errorf("failed to read response to auth request: %v", err)
-		return err
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		err := fmt.Errorf("unexpected response: %d", resp.StatusCode)
-		log.Errorf("unexpected response status=%d; error=%s", resp.StatusCode, body)
-		return err
-	}
-
-	type tokenResponse struct {
-		Token string `json:"token"`
-	}
-	tr := tokenResponse{}
-	if err := json.Unmarshal(body, &tr); err != nil {
-		log.Errorf("unmarshal error: %v: %q", err, body)
+		if isUnauthorizedErr(err) {
+			return ErrUnauthorized
+		}
+		log.Errorf("Failed to get token for hostname %s and username %s: %v", dockerRemote.Hostname, dockerRemote.Username, err)
 		return err
 	}
 
 	dockerRemote.ServiceHostname = service
-	dockerRemote.AuthHeader = fmt.Sprintf("Bearer %s", tr.Token)
+	dockerRemote.AuthHeader = fmt.Sprintf("Bearer %s", token)
 
 	return nil
+}
+
+func isUnauthorizedErr(err error) bool {
+	if err, ok := err.(errcode.Errors); ok && err.Len() > 0 {
+		if err, ok := err[0].(errcode.Error); ok && err.Code == errcode.ErrorCodeUnauthorized {
+			return true
+		}
+	}
+	return false
 }
 
 func (dockerRemote *DockerRemote) resolveBasicAuth(authenticateHeader string, additionalScope ...string) error {
