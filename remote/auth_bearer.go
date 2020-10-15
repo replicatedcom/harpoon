@@ -50,20 +50,6 @@ type tokenHandler struct {
 	tokenLock       sync.Mutex
 	tokenCache      string
 	tokenExpiration time.Time
-
-	logger Logger
-}
-
-// Logger defines the injectable logging interface, used on TokenHandlers.
-type Logger interface {
-	Debugf(format string, args ...interface{})
-}
-
-func logDebugf(logger Logger, format string, args ...interface{}) {
-	if logger == nil {
-		return
-	}
-	logger.Debugf(format, args...)
 }
 
 // An implementation of clock for providing real time data.
@@ -99,7 +85,6 @@ func NewTokenHandlerWithOptions(options auth.TokenHandlerOptions) *tokenHandler 
 		clientID:      options.ClientID,
 		scopes:        options.Scopes,
 		clock:         realClock{},
-		logger:        options.Logger,
 	}
 
 	return handler
@@ -203,7 +188,6 @@ func (th *tokenHandler) fetchTokenWithOAuth(realm *url.URL, refreshToken, servic
 	if tr.ExpiresIn < minimumTokenLifetimeSeconds {
 		// The default/minimum lifetime.
 		tr.ExpiresIn = minimumTokenLifetimeSeconds
-		logDebugf(th.logger, "Increasing token expiration to: %d seconds", tr.ExpiresIn)
 	}
 
 	if tr.IssuedAt.IsZero() {
@@ -294,7 +278,6 @@ func (th *tokenHandler) fetchTokenWithBasicAuth(realm *url.URL, service string, 
 	if tr.ExpiresIn < minimumTokenLifetimeSeconds {
 		// The default/minimum lifetime.
 		tr.ExpiresIn = minimumTokenLifetimeSeconds
-		logDebugf(th.logger, "Increasing token expiration to: %d seconds", tr.ExpiresIn)
 	}
 
 	if tr.IssuedAt.IsZero() {
