@@ -79,7 +79,7 @@ func (dockerRemote *DockerRemote) resolveBearerAuth(authenticateHeader string, a
 	}
 
 	modifiers := registry.Headers("Replicated", nil)
-	authTransport := transport.NewTransport(registry.NewTransport(nil), modifiers...)
+	authTransport := transport.NewTransport(transport.NewTransport(nil), modifiers...)
 
 	credentialAuthConfig := &dockertypes.AuthConfig{
 		Username:      dockerRemote.Username,
