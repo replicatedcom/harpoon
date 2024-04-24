@@ -2,7 +2,7 @@ export GO111MODULE=on
 
 .PHONY: test
 test:
-	go test --race -v ./...
+	CGO_ENABLED=1 go test --race -v ./...
 
 .PHONY: clean
 clean:
