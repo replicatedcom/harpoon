@@ -59,9 +59,9 @@ func (dockerRemote *DockerRemote) Auth(additionalScope ...string) error {
 // resolveAuth will return a new JWT token from the resources in the authenticateHeader string
 func (dockerRemote *DockerRemote) resolveAuth(authenticateHeader string, additionalScope ...string) error {
 	switch {
-	case strings.HasPrefix(authenticateHeader, "Bearer "):
+	case strings.HasPrefix(strings.ToLower(authenticateHeader), "bearer "):
 		return dockerRemote.resolveBearerAuth(authenticateHeader, additionalScope...)
-	case strings.HasPrefix(authenticateHeader, "Basic "):
+	case strings.HasPrefix(strings.ToLower(authenticateHeader), "basic "):
 		return dockerRemote.resolveBasicAuth(authenticateHeader, additionalScope...)
 	default:
 		return fmt.Errorf("unsupported authentication type: %s", authenticateHeader)
