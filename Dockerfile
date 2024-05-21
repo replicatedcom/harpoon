@@ -1,4 +1,4 @@
-FROM golang:1.12
+FROM golang:1.22
 
 ENV PROJECTPATH=/go/src/github.com/replicatedcom/harpoon
 ENV PATH $PATH:$PROJECTPATH/go/bin

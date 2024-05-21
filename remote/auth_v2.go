@@ -14,7 +14,7 @@ import (
 	"github.com/docker/distribution/registry/api/errcode"
 	"github.com/docker/distribution/registry/client/auth"
 	"github.com/docker/distribution/registry/client/transport"
-	dockertypes "github.com/docker/docker/api/types"
+	dockerregistrytypes "github.com/docker/docker/api/types/registry"
 	"github.com/docker/docker/registry"
 	"github.com/pkg/errors"
 	"github.com/replicatedcom/harpoon/log"
@@ -79,9 +79,9 @@ func (dockerRemote *DockerRemote) resolveBearerAuth(authenticateHeader string, a
 	}
 
 	modifiers := registry.Headers("Replicated", nil)
-	authTransport := transport.NewTransport(registry.NewTransport(nil), modifiers...)
+	authTransport := transport.NewTransport(nil, modifiers...)
 
-	credentialAuthConfig := &dockertypes.AuthConfig{
+	credentialAuthConfig := &dockerregistrytypes.AuthConfig{
 		Username:      dockerRemote.Username,
 		Password:      dockerRemote.Password,
 		ServerAddress: dockerRemote.Hostname,
