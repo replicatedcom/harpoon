@@ -8,7 +8,7 @@ require (
 	github.com/aws/aws-sdk-go v1.43.16
 	github.com/blang/semver v3.5.1+incompatible
 	github.com/docker/distribution v2.8.3+incompatible
-	github.com/docker/docker v25.0.5+incompatible
+	github.com/docker/docker v25.0.6+incompatible
 	github.com/fsouza/go-dockerclient v1.11.0
 	github.com/namsral/flag v0.0.0-20160516205227-417f4c49833f
 	github.com/op/go-logging v0.0.0-20160315200505-970db520ece7
