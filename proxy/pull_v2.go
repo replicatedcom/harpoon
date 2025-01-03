@@ -3,7 +3,6 @@ package proxy
 import (
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/textproto"
 	"strconv"
@@ -53,8 +52,7 @@ func (p *Proxy) GetManifestV2(namespace, imagename, ref string, accept []string)
 
 	req, err := p.Remote.NewHttpRequest("GET", uri, nil)
 	if err != nil {
-		log.Error(err)
-		return nil, err
+		return nil, errors.Wrap(err, "failed to create request")
 	}
 
 	// Get manifest schema version requested from client
@@ -70,26 +68,23 @@ func (p *Proxy) GetManifestV2(namespace, imagename, ref string, accept []string)
 
 	resp, err := p.Remote.DoWithRetry(req, 3, additionalScope)
 	if err != nil {
-		log.Error(err)
-		return nil, err
+		return nil, errors.Wrap(err, "failed to do request")
 	}
 	defer resp.Body.Close()
 
 	log.Debugf("Got %s with content type: %q", imagename, resp.Header.Get("Content-Type"))
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		log.Error(err)
-		return nil, err
+		return nil, errors.Wrap(err, "failed to read response body")
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		log.Errorf("status=%d; error=%s", resp.StatusCode, body)
-		return nil, &ProxyError{
+		return nil, errors.Wrapf(&ProxyError{
 			StatusCode:   resp.StatusCode,
 			ResponseBody: body,
 			ContentType:  resp.Header.Get("Content-Type"),
-		}
+		}, "unexpected status code: %d", resp.StatusCode)
 	}
 
 	result := &ManifestResponse{
@@ -107,9 +102,21 @@ func (p *Proxy) GetBlobV2(namespace, imagename, digestFull string, additionalHea
 		return nil, errors.Wrapf(err, "failed to make proxied blob request for %s", req.URL.String())
 	}
 
-	resp, err := p.Remote.DoWithRetry(req, 3)
+	resp, err := p.Remote.Do(req)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to do proxied blob request for %s", req.URL.String())
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			log.Errorf("failed to read response body: %v", err)
+		}
+		return nil, errors.Wrapf(&ProxyError{
+			StatusCode:   resp.StatusCode,
+			ResponseBody: body,
+			ContentType:  resp.Header.Get("Content-Type"),
+		}, "unexpected status code: %d", resp.StatusCode)
 	}
 
 	return p.makeBlobResponse(resp, req.URL.String()), nil

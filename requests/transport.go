@@ -3,10 +3,11 @@ package requests
 import (
 	"crypto/tls"
 	"crypto/x509"
-	"errors"
 	"io/ioutil"
 	"net"
 	"net/http"
+
+	"github.com/pkg/errors"
 )
 
 // TODO: transport may be a misnomer

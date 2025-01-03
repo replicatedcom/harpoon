@@ -5,12 +5,14 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	"net/http"
 	"os"
 	"strings"
 	"testing"
 
 	"github.com/docker/distribution/manifest/schema2"
 	"github.com/docker/distribution/reference"
+	"github.com/pkg/errors"
 	"github.com/replicatedcom/harpoon/remote"
 
 	"github.com/stretchr/testify/assert"
@@ -73,4 +75,28 @@ func TestPull(t *testing.T) {
 		log.Printf("copied %d bytes", n)
 		assert.Equal(t, blobResult.ContentLength, n)
 	}
+}
+
+func Test_GetBlobV2(t *testing.T) {
+	// Private image hosted in Replicated QA project
+	// gcr.io/replicated-qa/qa-ubuntu@sha256:bc025862c3e8ec4a8754ea4756e33da6c41cba38330d7e324abd25c8e0b93300
+	p := &Proxy{
+		Remote: &remote.DockerRemote{
+			Hostname:       "gcr.io",
+			Token:          "",
+			Username:       "",
+			Password:       "",
+			PreferredProto: "v2",
+		},
+	}
+	err := p.Remote.InitClient()
+	assert.NoError(t, err)
+
+	resp, err := p.GetBlobV2("replicated-qa", "qa-ubuntu", "sha256:bc025862c3e8ec4a8754ea4756e33da6c41cba38330d7e324abd25c8e0b93300", nil)
+	assert.Error(t, err)
+	assert.Nil(t, resp)
+
+	proxyError, ok := errors.Cause(err).(*ProxyError)
+	assert.True(t, ok)
+	assert.Equal(t, http.StatusUnauthorized, proxyError.StatusCode)
 }
