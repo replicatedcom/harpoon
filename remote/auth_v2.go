@@ -2,7 +2,7 @@ package remote
 
 import (
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -29,8 +29,7 @@ func (dockerRemote *DockerRemote) Auth(additionalScope ...string) error {
 
 	req, err := dockerRemote.NewHttpRequest("GET", uri, nil)
 	if err != nil {
-		log.Error(err)
-		return err
+		return errors.Wrap(err, "failed to create http request")
 	}
 
 	resp, err := dockerRemote.DoWithRetry(req, 3, additionalScope...)
@@ -40,12 +39,9 @@ func (dockerRemote *DockerRemote) Auth(additionalScope ...string) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusUnauthorized {
-		log.Error(ErrUnauthorized)
 		return ErrUnauthorized
 	} else if resp.StatusCode != http.StatusOK {
-		err := fmt.Errorf("Unexpected status code for %s: %d", uri, resp.StatusCode)
-		log.Error(err)
-		return err
+		return errors.Errorf("unexpected status code for %s: %d", uri, resp.StatusCode)
 	}
 
 	// these are v1 things
@@ -136,34 +132,28 @@ func (dockerRemote *DockerRemote) resolveBasicAuth(authenticateHeader string, ad
 	log.Debugf("auth uri = %s", uri)
 	req, err := dockerRemote.NewHttpRequest("GET", uri, nil)
 	if err != nil {
-		log.Error(err)
-		return err
+		return errors.Wrap(err, "failed to parse ECR endpoint")
 	}
 
 	req.SetBasicAuth(dockerRemote.Username, dockerRemote.Password)
 
 	resp, err := dockerRemote.Do(req)
 	if err != nil {
-		log.Error(err)
-		return err
+		return errors.Wrap(err, "failed to get ECR authorization token")
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusUnauthorized {
-		log.Error(ErrUnauthorized)
 		return ErrUnauthorized
 	}
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		log.Errorf("failed to read response to auth request: %v", err)
-		return err
+		return errors.Wrap(err, "failed to read auth response")
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		err := fmt.Errorf("unexpected response: %d", resp.StatusCode)
-		log.Errorf("unexpected response status=%d; error=%s", resp.StatusCode, body)
-		return err
+		return errors.Errorf("unexpected response status=%d; error=%s", resp.StatusCode, body)
 	}
 
 	// TODO: github responds with `{"status": "ok", "message": "Hello, world! This is the GitHub Package Registry."}`
@@ -177,8 +167,7 @@ func (dockerRemote *DockerRemote) resolveBasicAuth(authenticateHeader string, ad
 func (dockerRemote *DockerRemote) resolveECRAuth(ecrEndpoint string) error {
 	registry, zone, err := parseECREndpoint(ecrEndpoint)
 	if err != nil {
-		log.Error(err)
-		return err
+		return errors.Wrap(err, "failed to parse ECR endpoint")
 	}
 
 	ecrService := getECRService(dockerRemote.Username, dockerRemote.Password, zone)
@@ -194,9 +183,7 @@ func (dockerRemote *DockerRemote) resolveECRAuth(ecrEndpoint string) error {
 	}
 
 	if len(ecrToken.AuthorizationData) == 0 {
-		err := fmt.Errorf("Provided ECR repo: %s not accessible with credentials", ecrEndpoint)
-		log.Error(err)
-		return err
+		return errors.Errorf("provided ECR repo: %s not accessible with credentials", ecrEndpoint)
 	}
 
 	token := *ecrToken.AuthorizationData[0].AuthorizationToken
@@ -236,13 +223,11 @@ func parseECREndpoint(endpoint string) (registry, zone string, err error) {
 	invalidECRErr := errors.New("Invalid ECR URL")
 	splitEndpoint := strings.Split(endpoint, ".")
 	if len(splitEndpoint) < 6 {
-		log.Debugf("Invalid ECR endpoint: %s provided", endpoint)
-		return "", "", invalidECRErr
+		return "", "", errors.Wrapf(invalidECRErr, "invalid ECR endpoint: %s", endpoint)
 	}
 
 	if splitEndpoint[1] != "dkr" || splitEndpoint[2] != "ecr" {
-		log.Debugf("Invalid ECR endpoint: %s provided", endpoint)
-		return "", "", invalidECRErr
+		return "", "", errors.Wrapf(invalidECRErr, "invalid ECR endpoint: %s", endpoint)
 	}
 
 	return splitEndpoint[0], splitEndpoint[3], nil

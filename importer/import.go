@@ -1,6 +1,7 @@
 package importer
 
 import (
+	"github.com/pkg/errors"
 	"github.com/replicatedcom/harpoon/log"
 	"github.com/replicatedcom/harpoon/remote"
 
@@ -16,8 +17,7 @@ func init() {
 	var err error
 	dockerClient, err = docker.NewClient("unix:///var/run/docker.sock")
 	if err != nil {
-		log.Error(err)
-		panic(err)
+		panic(errors.Wrap(err, "failed to create docker client"))
 	}
 }
 
@@ -51,8 +51,7 @@ func (i *Importer) ImportFromLocal(localStore *v1Store) error {
 		InputStream: archive,
 	}
 	if err = dockerClient.LoadImage(loadImageOptions); err != nil {
-		log.Error(err)
-		return err
+		return errors.Wrap(err, "failed to load image")
 	}
 
 	return nil

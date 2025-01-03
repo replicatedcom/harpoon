@@ -3,10 +3,11 @@ package requests
 import (
 	"crypto/tls"
 	"crypto/x509"
-	"errors"
 	"io/ioutil"
 	"net"
 	"net/http"
+
+	"github.com/pkg/errors"
 )
 
 // TODO: transport may be a misnomer
@@ -54,13 +55,12 @@ func NewTlsTransport(pemFilename string) (*TcpTransport, error) {
 func replicatedCertPool(pemFilename string) (*x509.CertPool, error) {
 	file, err := ioutil.ReadFile(pemFilename)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, "failed to read pem file %s", pemFilename)
 	}
 
 	roots := x509.NewCertPool()
 	if ok := roots.AppendCertsFromPEM(file); !ok {
-		err := errors.New("unable to append root cert")
-		return nil, err
+		return nil, errors.New("unable to append root cert")
 	}
 
 	return roots, nil
