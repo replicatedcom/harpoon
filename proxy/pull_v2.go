@@ -9,6 +9,7 @@ import (
 	"strconv"
 
 	"github.com/docker/distribution/reference"
+	"github.com/pkg/errors"
 	"github.com/replicatedcom/harpoon/log"
 	"github.com/replicatedcom/harpoon/remote"
 )
@@ -103,14 +104,12 @@ func (p *Proxy) GetManifestV2(namespace, imagename, ref string, accept []string)
 func (p *Proxy) GetBlobV2(namespace, imagename, digestFull string, additionalHeaders http.Header) (*BlobResponse, error) {
 	req, err := p.makeBlobRequest("GET", namespace, imagename, digestFull, additionalHeaders)
 	if err != nil {
-		log.Errorf("Failed to make proxied blob request for %s", req.URL.String())
-		return nil, err
+		return nil, errors.Wrapf(err, "failed to make proxied blob request for %s", req.URL.String())
 	}
 
 	resp, err := p.Remote.DoWithRetry(req, 3)
 	if err != nil {
-		log.Errorf("Failed to do proxied blob request for %s", req.URL.String())
-		return nil, err
+		return nil, errors.Wrapf(err, "failed to do proxied blob request for %s", req.URL.String())
 	}
 
 	return p.makeBlobResponse(resp, req.URL.String()), nil

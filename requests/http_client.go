@@ -6,6 +6,8 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+
+	"github.com/pkg/errors"
 )
 
 var (
@@ -67,7 +69,7 @@ func newTransport(pemFilename, proxyAddress string) (*TcpTransport, error) {
 func (c *HttpClient) Get(url string) (*http.Response, error) {
 	req, err := c.NewRequest("GET", url, nil)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "failed to create request")
 	}
 	return c.Do(req)
 }
@@ -103,7 +105,7 @@ func (c *HttpClient) NewRequest(method, urlStr string, body io.Reader) (*http.Re
 			req.Header.Add(key, val)
 		}
 	}
-	return req, err
+	return req, errors.Wrap(err, "failed to create request")
 }
 
 func (c *HttpClient) Do(req *http.Request) (*http.Response, error) {

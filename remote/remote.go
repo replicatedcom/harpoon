@@ -1,7 +1,6 @@
 package remote
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,6 +11,7 @@ import (
 	"github.com/replicatedcom/harpoon/requests"
 
 	"github.com/docker/distribution/reference"
+	"github.com/pkg/errors"
 )
 
 const (
@@ -96,8 +96,7 @@ func ParseDockerURI(imageURI string) (*DockerRemote, error) {
 
 	named, err := reference.ParseNormalizedNamed(imageURI)
 	if err != nil {
-		log.Error(err)
-		return nil, err
+		return nil, errors.Wrap(err, "failed to parse normalized name")
 	}
 	dockerRemote.Ref = named
 
@@ -113,7 +112,7 @@ func (remote *DockerRemote) InitClient() error {
 	client, err := requests.GetHttpClient(os.Getenv("HTTP_PROXY"))
 	if err != nil {
 		log.Error(err)
-		return err
+		return errors.Wrap(err, "failed to init http client")
 	}
 
 	remote.client = client
@@ -136,7 +135,11 @@ func (remote *DockerRemote) GetDisplayName() string {
 // }
 
 func (remote *DockerRemote) NewHttpRequest(method, uri string, body io.Reader) (*http.Request, error) {
-	return remote.client.NewRequest(method, uri, body)
+	req, err := remote.client.NewRequest(method, uri, body)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create request")
+	}
+	return req, nil
 }
 
 // Do will not attempt to authenticate if server returns a 401 (or any other error)
@@ -147,9 +150,7 @@ func (remote *DockerRemote) Do(req *http.Request) (*http.Response, error) {
 // DoRequest will actually make the request, and will authenticate with the v2 auth server, if needed
 func (remote *DockerRemote) DoWithRetry(req *http.Request, numAttempts int, additionalScope ...string) (*http.Response, error) {
 	if numAttempts == 0 {
-		err := errors.New("Too many retries")
-		log.Error(err)
-		return nil, err
+		return nil, errors.New("too many retries")
 	}
 
 	if remote.AuthHeader != "" {
@@ -158,7 +159,7 @@ func (remote *DockerRemote) DoWithRetry(req *http.Request, numAttempts int, addi
 
 	resp, err := remote.client.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "failed to do request")
 	}
 
 	// We need to authenticate after attempting a request in order

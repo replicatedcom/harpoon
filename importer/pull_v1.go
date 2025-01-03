@@ -6,5 +6,5 @@ import "errors"
 // ignore the cache if `force` is `true`.
 // TODO: Add auth info to args
 func (i *Importer) PullImageV1() (*v1Store, error) {
-	return nil, errors.New("pulling from v1 is not implemented")
+	return nil, errors.New("pulling from v1 registry is not implemented")
 }

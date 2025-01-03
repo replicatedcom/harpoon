@@ -2,7 +2,6 @@ package importer
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -14,6 +13,7 @@ import (
 	"github.com/docker/distribution/reference"
 	"github.com/docker/docker/image"
 	digest "github.com/opencontainers/go-digest"
+	"github.com/pkg/errors"
 )
 
 type v1Store struct {
@@ -55,8 +55,7 @@ func getV1Store(verifiedManifest *schema1.Manifest) (*v1Store, error) {
 
 func (repo *v1Store) delete() error {
 	if err := os.RemoveAll(repo.Workspace); err != nil {
-		log.Error(err)
-		return err
+		return errors.Wrap(err, "failed to remove workspace")
 	}
 	return nil
 }
@@ -64,8 +63,7 @@ func (repo *v1Store) delete() error {
 func (repo *v1Store) writeConfigFile(imageID image.ID, config []byte) error {
 	filename := filepath.Join(repo.Workspace, fmt.Sprintf("%s.json", digest.Digest(imageID).Hex()))
 	if err := ioutil.WriteFile(filename, config, 0644); err != nil {
-		log.Error(err)
-		return err
+		return errors.Wrap(err, "failed to write config file")
 	}
 
 	return nil
@@ -76,9 +74,7 @@ func (repo *v1Store) writeRepositoriesFile(ref reference.Named, imageID image.ID
 
 	tagged, ok := ref.(reference.NamedTagged)
 	if !ok {
-		err := fmt.Errorf("Reference is not tagged: %T", ref)
-		log.Error(err)
-		return err
+		return errors.Errorf("reference is not tagged: %T", ref)
 	}
 
 	repos := map[string]interface{}{
@@ -89,13 +85,11 @@ func (repo *v1Store) writeRepositoriesFile(ref reference.Named, imageID image.ID
 
 	contents, err := json.Marshal(repos)
 	if err != nil {
-		log.Error(err)
-		return err
+		return errors.Wrap(err, "failed to marshal repositories")
 	}
 
 	if err := ioutil.WriteFile(filename, contents, 0644); err != nil {
-		log.Error(err)
-		return err
+		return errors.Wrap(err, "failed to write repositories file")
 	}
 
 	return nil
@@ -118,13 +112,11 @@ func (repo *v1Store) writeManifestFile(ref reference.Named, imageID image.ID, la
 
 	contents, err := json.Marshal([]manifestItem{manifest})
 	if err != nil {
-		log.Error(err)
-		return err
+		return errors.Wrap(err, "failed to marshal manifest")
 	}
 
 	if err := ioutil.WriteFile(filename, contents, 0644); err != nil {
-		log.Error(err)
-		return err
+		return errors.Wrap(err, "failed to write manifest file")
 	}
 
 	return nil
@@ -135,31 +127,22 @@ func verifySchema1Manifest(signedManifest *schema1.SignedManifest, ref reference
 	if digested, isCanonical := ref.(reference.Canonical); isCanonical {
 		verifier := digested.Digest().Verifier()
 		if _, err := verifier.Write(signedManifest.Canonical); err != nil {
-			log.Error(err)
-			return nil, err
+			return nil, errors.Wrap(err, "failed to write verifier")
 		}
 		if !verifier.Verified() {
-			err := fmt.Errorf("image verification failed for digest %s", digested.Digest())
-			log.Error(err)
-			return nil, err
+			return nil, errors.Errorf("image verification failed for digest %s", digested.Digest())
 		}
 	}
 	m = &signedManifest.Manifest
 
 	if m.SchemaVersion != 1 {
-		err := fmt.Errorf("unsupported schema version %d for %q", m.SchemaVersion, ref.String())
-		log.Error(err)
-		return nil, err
+		return nil, errors.Errorf("unsupported schema version %d for %q", m.SchemaVersion, ref.String())
 	}
 	if len(m.FSLayers) != len(m.History) {
-		err := fmt.Errorf("length of history not equal to number of layers for %q", ref.String())
-		log.Error(err)
-		return nil, err
+		return nil, errors.Errorf("length of history not equal to number of layers for %q", ref.String())
 	}
 	if len(m.FSLayers) == 0 {
-		err := fmt.Errorf("no FSLayers in manifest for %q", ref.String())
-		log.Error(err)
-		return nil, err
+		return nil, errors.Errorf("no FSLayers in manifest for %q", ref.String())
 	}
 
 	return m, nil

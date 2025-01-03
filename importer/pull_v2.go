@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -24,6 +23,7 @@ import (
 	v1 "github.com/docker/docker/image/v1"
 	"github.com/docker/docker/layer"
 	digest "github.com/opencontainers/go-digest"
+	"github.com/pkg/errors"
 )
 
 const (
@@ -99,8 +99,7 @@ func (i *Importer) writeLayersV1(tarWriter *tar.Writer, rawManifest []byte) erro
 
 		blobStream, expectedLenght, err := i.getBlobStream(layer.BlobSum)
 		if err != nil {
-			log.Error(err)
-			return err
+			return errors.Wrap(err, "failed to unmarshal manifest")
 		}
 		defer blobStream.Close() // ok to keep open until func terminates
 
@@ -150,8 +149,7 @@ func (i *Importer) writeLayersV2(tarWriter *tar.Writer, rawManifest []byte) erro
 
 		blobStream, expectedLenght, err := i.getBlobStream(layer.Digest)
 		if err != nil {
-			log.Error(err)
-			return err
+			return errors.Wrap(err, "failed to write header")
 		}
 		defer blobStream.Close() // ok to keep open until func terminates
 
@@ -188,19 +186,18 @@ func (i *Importer) ImportFromStream(reader io.Reader, imageURI string) error {
 func streamToTempStore(reader io.Reader, imageURI string) (*v1Store, error) {
 	ref, err := reference.ParseNormalizedNamed(imageURI)
 	if err != nil {
-		log.Error(err)
-		return nil, err
+		return nil, errors.Wrap(err, "failed to create http request")
 	}
 
 	tarReader := tar.NewReader(reader)
 	verifiedManifest, err := getManifestFromTar(tarReader, ref)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "failed to verify schema1 manifest")
 	}
 
 	localStore, err := getV1Store(verifiedManifest)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "failed to get manifest bytes")
 	}
 
 	rootFS := image.NewRootFS()
@@ -326,7 +323,7 @@ func (i *Importer) PullImage() (*v1Store, error) {
 
 	supported, err := i.isSupportedProtocol()
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "failed to get v1 store")
 	}
 	if !supported {
 		return nil, errors.New("Docker registry v2 protocol is not supported by remote")
@@ -345,7 +342,7 @@ func (i *Importer) pullImageV2ManifestV1() (*v1Store, error) {
 
 	verifiedManifest, err := i.GetManifestV1()
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "failed to check protocol support")
 	}
 
 	if len(verifiedManifest.FSLayers) == 0 {
@@ -356,7 +353,7 @@ func (i *Importer) pullImageV2ManifestV1() (*v1Store, error) {
 
 	localStore, err := getV1Store(verifiedManifest)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "failed to get manifest v1")
 	}
 
 	rootFS := image.NewRootFS()
@@ -477,11 +474,10 @@ func (i *Importer) downloadBlob(blobsum digest.Digest, layerDir string) (layer.D
 
 	req, err := i.Remote.NewHttpRequest("GET", uri, nil)
 	if err != nil {
-		log.Error(err)
-		return layer.DiffID(""), err
+		return layer.DiffID(""), errors.Wrap(err, "failed to copy tar file")
 	}
 
-	resp, err := i.Remote.DoWithRetry(req, maxRetries)
+	resp, err := i.Remote.Do(req)
 	if err != nil {
 		return layer.DiffID(""), err
 	}
@@ -498,16 +494,14 @@ func (i *Importer) downloadBlob(blobsum digest.Digest, layerDir string) (layer.D
 
 	archive, err := gzip.NewReader(responseReader)
 	if err != nil {
-		log.Errorf("Failed to create gzip reader: %v", err)
-		return layer.DiffID(""), err
+		return layer.DiffID(""), errors.Wrap(err, "failed to create gzip reader")
 	}
 	defer archive.Close()
 
 	target := filepath.Join(layerDir, "layer.tar")
 	writer, err := os.Create(target)
 	if err != nil {
-		log.Errorf("Failed to create tar file %s: %v", target, err)
-		return layer.DiffID(""), err
+		return layer.DiffID(""), errors.Wrapf(err, "failed to create tar file %s", target)
 	}
 	defer writer.Close()
 
@@ -522,9 +516,7 @@ func (i *Importer) downloadBlob(blobsum digest.Digest, layerDir string) (layer.D
 
 	computedBlobsum := digest.Digest(gzipDigest.Digest())
 	if blobsum.String() != computedBlobsum.String() {
-		err := fmt.Errorf("Downloaded layer blobsum does not match expected blobsum: %s != %s", blobsum, computedBlobsum)
-		log.Error(err)
-		return layer.DiffID(""), err
+		return layer.DiffID(""), errors.Errorf("downloaded layer blobsum does not match expected blobsum: %s != %s", blobsum, computedBlobsum)
 	}
 
 	diffID := digest.Digest(tarDigest.Digest())
@@ -546,14 +538,12 @@ func (i *Importer) getBlobStream(blobsum digest.Digest) (io.ReadCloser, int64, e
 
 	resp, err := i.Remote.DoWithRetry(req, maxRetries)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, errors.Wrap(err, "failed to create request")
 	}
 
 	if resp.StatusCode != http.StatusOK {
 		resp.Body.Close()
-		err := fmt.Errorf("Unexpected status code for %s: %d", uri, resp.StatusCode)
-		log.Error(err)
-		return nil, 0, err
+		return nil, 0, errors.Errorf("unexpected status code for %s: %d", uri, resp.StatusCode)
 	}
 
 	log.Debugf("Responded with content-length: %q", resp.Header.Get("Content-Length"))
@@ -596,8 +586,7 @@ func (i *Importer) GetManifestBytes(mediaTypes ...string) ([]byte, string, error
 
 	req, err := i.Remote.NewHttpRequest("GET", uri, nil)
 	if err != nil {
-		log.Error(err)
-		return nil, "", err
+		return nil, "", errors.Wrap(err, "failed to create request")
 	}
 
 	if len(mediaTypes) == 0 {
@@ -620,23 +609,20 @@ func (i *Importer) GetManifestBytes(mediaTypes ...string) ([]byte, string, error
 
 	resp, err := i.Remote.DoWithRetry(req, maxRetries, additionalScope)
 	if err != nil {
-		return nil, "", err
+		return nil, "", errors.Wrap(err, "failed to do request")
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		err := fmt.Errorf("Unexpected status code for %s: %d", uri, resp.StatusCode)
-		log.Error(err)
-		return nil, "", err
+		return nil, "", errors.Errorf("unexpected status code for %s: %d", uri, resp.StatusCode)
 	}
 
 	mediaType := resp.Header.Get("Content-Type")
 	log.Debugf("Responded with media-type: %q", mediaType)
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		log.Error(err)
-		return nil, mediaType, err
+		return nil, mediaType, errors.Wrap(err, "failed to read response body")
 	}
 
 	return body, mediaType, nil
@@ -645,22 +631,17 @@ func (i *Importer) GetManifestBytes(mediaTypes ...string) ([]byte, string, error
 func getManifestFromTar(tarReader *tar.Reader, ref reference.Named) (*schema1.Manifest, error) {
 	hdr, err := tarReader.Next()
 	if err != nil { // EOF is also an error here.  We need the manifest.
-		err := fmt.Errorf("Cannot read manifest from tar stream: %v", err)
-		log.Error(err)
-		return nil, err
+		return nil, errors.Wrap(err, "failed to read manifest from tar stream")
 	}
 
 	if hdr.Name != ManifestFileName {
-		err := fmt.Errorf("Expected %q but found %q", ManifestFileName, hdr.Name)
-		log.Error(err)
-		return nil, err
+		return nil, errors.Errorf("expected %q but found %q", ManifestFileName, hdr.Name)
 	}
 
 	manifestBuffer := bytes.NewBuffer(nil)
 	_, err = io.CopyN(manifestBuffer, tarReader, hdr.Size)
 	if err != nil {
-		log.Error(err)
-		return nil, err
+		return nil, errors.Wrap(err, "failed to create gzip reader")
 	}
 
 	var manifest schema1.SignedManifest
@@ -683,16 +664,13 @@ func getManifestFromTar(tarReader *tar.Reader, ref reference.Named) (*schema1.Ma
 func downloadBlobFromTar(tarReader *tar.Reader, blobsum digest.Digest, layerDir string) (layer.DiffID, error) {
 	hdr, err := tarReader.Next()
 	if err != nil { // EOF is also an error.  We expect a certain number of layers.
-		log.Errorf("Cannot read layer: %v", err)
-		return layer.DiffID(""), err
+		return layer.DiffID(""), errors.Wrap(err, "failed to read layer")
 	}
 
 	log.Debugf("Expecting %s layer (%d bytes)", blobsum, hdr.Size)
 
 	if hdr.Name != blobsum.String() {
-		err := fmt.Errorf("Expected layer %q, but got layer %q", blobsum, hdr.Name)
-		log.Error(err)
-		return layer.DiffID(""), err
+		return layer.DiffID(""), errors.Errorf("expected layer %q, but got layer %q", blobsum, hdr.Name)
 	}
 
 	gzipDigest := digest.Canonical.Digester()
@@ -740,14 +718,11 @@ func downloadBlobFromTar(tarReader *tar.Reader, blobsum digest.Digest, layerDir 
 func skipLayerInTar(tarReader *tar.Reader, blobsum digest.Digest) error {
 	hdr, err := tarReader.Next()
 	if err != nil { // EOF is also an error.  We expect a certain number of layers.
-		log.Errorf("Cannot read layer: %v", err)
-		return err
+		return errors.Wrap(err, "failed to read layer")
 	}
 
 	if hdr.Name != blobsum.String() {
-		err := fmt.Errorf("Expected layer %q, but got layer %q", blobsum, hdr.Name)
-		log.Error(err)
-		return err
+		return errors.Errorf("expected layer %q, but got layer %q", blobsum, hdr.Name)
 	}
 
 	io.Copy(ioutil.Discard, tarReader)
